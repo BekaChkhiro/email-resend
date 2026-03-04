@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Domain {
+  id         String   @id @default(uuid())
+  domain     String   @unique
+  fromName   String   @map("from_name")
+  fromEmail  String   @map("from_email")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  campaignEmails CampaignEmail[]
+
+  @@map("domains")
+}
+
+model Contact {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  firstName      String   @map("first_name")
+  lastName       String   @map("last_name")
+  fullName       String?  @map("full_name")
+  title          String?
+
+  // Email metadata
+  listName       String?  @map("list_name")
+  emailType      String?  @map("email_type")
+  emailStatus    String?  @map("email_status")
+
+  // Location
+  location       String?
+  locality       String?
+  region         String?
+  country        String?
+
+  // Social / Profile
+  linkedin       String?
+  profileUrl     String?  @map("profile_url")
+  domain         String?
+
+  // Company info
+  companyName        String?  @map("company_name")
+  companyDomain      String?  @map("company_domain")
+  companyIndustry    String?  @map("company_industry")
+  companySubindustry String?  @map("company_subindustry")
+  companySize        Int?     @map("company_size")
+  companySizeRange   String?  @map("company_size_range")
+  companyFounded     Int?     @map("company_founded")
+  companyRevenue     String?  @map("company_revenue")
+  companyFunding     String?  @map("company_funding")
+  companyType        String?  @map("company_type")
+  companyLinkedin    String?  @map("company_linkedin")
+  companyTwitter     String?  @map("company_twitter")
+  companyFacebook    String?  @map("company_facebook")
+  companyDescription String?  @map("company_description")
+  linkedinProfileUrl String?  @map("linkedin_profile_url")
+
+  // Company funding details
+  companyLastFundingRound  String?  @map("company_last_funding_round")
+  companyLastFundingAmount String?  @map("company_last_funding_amount")
+  companyLastFundingAt     String?  @map("company_last_funding_at")
+
+  // Company address
+  companyLocation    String?  @map("company_location")
+  companyStreet      String?  @map("company_street")
+  companyLocality    String?  @map("company_locality")
+  companyRegion      String?  @map("company_region")
+  companyCountry     String?  @map("company_country")
+  companyPostalCode  String?  @map("company_postal_code")
+
+  // Other
+  otherWorkEmails String?  @map("other_work_emails")
+  decisionMaker   Boolean? @map("decision_maker")
+
+  isUnsubscribed Boolean  @default(false) @map("is_unsubscribed")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  campaignEmails CampaignEmail[]
+
+  @@map("contacts")
+}
+
+enum EmailFormat {
+  html
+  plain_text
+}
+
+enum CampaignStatus {
+  draft
+  sending
+  completed
+  paused
+}
+
+model Campaign {
+  id                 String         @id @default(uuid())
+  name               String
+  subject            String
+  emailFormat        EmailFormat    @default(html) @map("email_format")
+  delaySeconds       Int            @default(0) @map("delay_seconds")
+  status             CampaignStatus @default(draft)
+  selectedContactIds String[]       @map("selected_contact_ids")
+  aiPrompt           String?        @map("ai_prompt")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  sentAt             DateTime?      @map("sent_at")
+
+  templates    CampaignTemplate[]
+  emails       CampaignEmail[]
+
+  @@map("campaigns")
+}
+
+model CampaignTemplate {
+  id          String   @id @default(uuid())
+  campaignId  String   @map("campaign_id")
+  versionName String   @map("version_name")
+  body        String
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  campaign       Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignEmails CampaignEmail[]
+
+  @@map("campaign_templates")
+}
+
+enum EmailStatus {
+  pending
+  sent
+  delivered
+  opened
+  clicked
+  bounced
+  failed
+}
+
+model CampaignEmail {
+  id            String      @id @default(uuid())
+  campaignId    String      @map("campaign_id")
+  contactId     String      @map("contact_id")
+  domainId      String      @map("domain_id")
+  templateId    String?     @map("template_id")
+  resendId      String?     @map("resend_id")
+  status        EmailStatus @default(pending)
+  generatedBody String?     @map("generated_body")
+  aiGenerated   Boolean     @default(false) @map("ai_generated")
+  openedAt      DateTime?   @map("opened_at")
+  clickedAt     DateTime?   @map("clicked_at")
+  sentAt        DateTime?   @map("sent_at")
+  errorMessage  String?     @map("error_message")
+
+  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact  Contact          @relation(fields: [contactId], references: [id])
+  domain   Domain           @relation(fields: [domainId], references: [id])
+  template CampaignTemplate? @relation(fields: [templateId], references: [id])
+
+  @@map("campaign_emails")
+}
