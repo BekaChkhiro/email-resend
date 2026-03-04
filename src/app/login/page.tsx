@@ -38,6 +38,11 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
+        <img
+          src="/giorgi.png"
+          alt="Logo"
+          className="mx-auto mb-4 h-20 w-20 rounded-full object-cover"
+        />
         <h1 className="mb-6 text-center text-2xl font-bold text-gray-900">
           Email Campaign App
         </h1>

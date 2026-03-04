@@ -52,7 +52,11 @@ export default function Sidebar() {
       >
         {/* Logo / App name */}
         <div className="flex h-14 items-center border-b border-gray-200 px-5">
-          <MailIcon />
+          <img
+            src="/giorgi.png"
+            alt="Logo"
+            className="h-8 w-8 rounded-full object-cover"
+          />
           <span className="ml-2 text-lg font-semibold text-gray-900">
             Email Campaign
           </span>
