@@ -179,14 +179,21 @@ async function sendCampaignEmails(campaignId: string) {
       unsubscribeUrl
     );
 
+    // Wrap HTML emails with sender photo header
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+    const finalBody =
+      campaign.emailFormat === "html"
+        ? `<div style="margin-bottom:20px"><img src="${appUrl}/giorgi.png" alt="${email.domain.fromName}" style="width:48px;height:48px;border-radius:50%;object-fit:cover" /></div>${emailBody}`
+        : emailBody;
+
     try {
       const result = await resend.emails.send({
         from: `${email.domain.fromName} <${email.domain.fromEmail}>`,
         to: [email.contact.email],
         subject: campaign.subject,
         ...(campaign.emailFormat === "html"
-          ? { html: emailBody }
-          : { text: emailBody }),
+          ? { html: finalBody }
+          : { text: finalBody }),
       });
 
       if (result.error) {
