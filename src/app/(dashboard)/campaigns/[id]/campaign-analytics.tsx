@@ -186,13 +186,13 @@ export default function CampaignAnalytics({
                         {email.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-xs text-gray-500" suppressHydrationWarning>
                       {formatDate(email.sentAt)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-xs text-gray-500" suppressHydrationWarning>
                       {formatDate(email.openedAt)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-xs text-gray-500" suppressHydrationWarning>
                       {formatDate(email.clickedAt)}
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500">
