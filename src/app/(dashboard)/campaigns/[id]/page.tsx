@@ -7,6 +7,7 @@ import PrepareSendButton from "./prepare-send-button";
 import AiPromptEditor from "./ai-prompt-editor";
 import AiEmailGenerator from "./ai-email-generator";
 import CampaignAnalytics from "./campaign-analytics";
+import ResumeSendButton from "./resume-send-button";
 
 const statusStyles: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -74,6 +75,7 @@ export default async function CampaignDetailPage({
   }));
 
   const isDraft = campaign.status === "draft";
+  const isSending = campaign.status === "sending";
 
   // Fetch all campaign emails with relations for analytics (non-draft campaigns)
   const campaignEmails = !isDraft
@@ -95,6 +97,11 @@ export default async function CampaignDetailPage({
         orderBy: { sentAt: "desc" },
       })
     : [];
+
+  // Count pending emails for resume functionality
+  const pendingEmailCount = campaignEmails.filter(
+    (e) => e.status === "pending"
+  ).length;
 
   const analyticsEmails = campaignEmails.map((e) => ({
     id: e.id,
@@ -149,6 +156,16 @@ export default async function CampaignDetailPage({
           )}
         </div>
       </div>
+
+      {/* Resume button for stuck campaigns */}
+      {isSending && pendingEmailCount > 0 && (
+        <div className="mb-6">
+          <ResumeSendButton
+            campaignId={campaign.id}
+            pendingCount={pendingEmailCount}
+          />
+        </div>
+      )}
 
       {/* Analytics section for non-draft campaigns */}
       {!isDraft && (
