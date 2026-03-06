@@ -82,6 +82,7 @@ model Contact {
   createdAt      DateTime @default(now()) @map("created_at")
 
   campaignEmails CampaignEmail[]
+  inboxMessages  InboxMessage[]
 
   @@map("contacts")
 }
@@ -110,8 +111,9 @@ model Campaign {
   createdAt          DateTime       @default(now()) @map("created_at")
   sentAt             DateTime?      @map("sent_at")
 
-  templates    CampaignTemplate[]
-  emails       CampaignEmail[]
+  templates      CampaignTemplate[]
+  emails         CampaignEmail[]
+  inboxMessages  InboxMessage[]
 
   @@map("campaigns")
 }
@@ -154,10 +156,66 @@ model CampaignEmail {
   sentAt        DateTime?   @map("sent_at")
   errorMessage  String?     @map("error_message")
 
-  campaign Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  contact  Contact          @relation(fields: [contactId], references: [id])
-  domain   Domain           @relation(fields: [domainId], references: [id])
-  template CampaignTemplate? @relation(fields: [templateId], references: [id])
+  campaign       Campaign         @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  contact        Contact          @relation(fields: [contactId], references: [id])
+  domain         Domain           @relation(fields: [domainId], references: [id])
+  template       CampaignTemplate? @relation(fields: [templateId], references: [id])
+  inboxMessages  InboxMessage[]
 
   @@map("campaign_emails")
+}
+
+enum InboxMessageDirection {
+  inbound
+  outbound
+}
+
+enum InboxMessageStatus {
+  unread
+  read
+  archived
+}
+
+model InboxMessage {
+  id              String                @id @default(uuid())
+
+  // Original campaign email relation
+  campaignEmailId String?               @map("campaign_email_id")
+  campaignEmail   CampaignEmail?        @relation(fields: [campaignEmailId], references: [id])
+
+  // Contact relation
+  contactId       String                @map("contact_id")
+  contact         Contact               @relation(fields: [contactId], references: [id])
+
+  // Campaign relation
+  campaignId      String?               @map("campaign_id")
+  campaign        Campaign?             @relation(fields: [campaignId], references: [id])
+
+  // Email threading
+  messageId       String?               @unique @map("message_id")
+  inReplyTo       String?               @map("in_reply_to")
+
+  // Message content
+  direction       InboxMessageDirection
+  status          InboxMessageStatus    @default(unread)
+
+  fromEmail       String                @map("from_email")
+  toEmail         String                @map("to_email")
+  subject         String
+  textBody        String?               @map("text_body")
+  htmlBody        String?               @map("html_body")
+
+  // Timestamps
+  receivedAt      DateTime              @map("received_at")
+  createdAt       DateTime              @default(now()) @map("created_at")
+
+  // For sent replies
+  resendId        String?               @map("resend_id")
+  sentAt          DateTime?             @map("sent_at")
+  errorMessage    String?               @map("error_message")
+
+  @@index([contactId])
+  @@index([campaignId])
+  @@index([status])
+  @@map("inbox_messages")
 }

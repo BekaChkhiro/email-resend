@@ -6,12 +6,17 @@ import { useState } from "react";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboardIcon },
+  { href: "/inbox", label: "Inbox", icon: InboxIcon, showBadge: true },
   { href: "/contacts", label: "Contacts", icon: UsersIcon },
   { href: "/domains", label: "Domains", icon: GlobeIcon },
   { href: "/campaigns", label: "Campaigns", icon: MailIcon },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({
+  inboxUnreadCount = 0,
+}: {
+  inboxUnreadCount?: number;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -82,7 +87,12 @@ export default function Sidebar() {
                 }`}
               >
                 <item.icon />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.showBadge && inboxUnreadCount > 0 && (
+                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-xs font-medium text-white bg-blue-600 rounded-full">
+                    {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -143,6 +153,15 @@ function MailIcon() {
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <rect width="20" height="16" x="2" y="4" rx="2" />
       <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+    </svg>
+  );
+}
+
+function InboxIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+      <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
     </svg>
   );
 }
