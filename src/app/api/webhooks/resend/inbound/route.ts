@@ -154,28 +154,39 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // If still no contact, try to find by email domain match
+  // If still no contact, try to find by company domain (but not for common email providers)
   if (!contact) {
     const emailDomain = fromEmail.split("@")[1];
-    if (emailDomain) {
+    const commonDomains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com", "mail.ru", "yandex.ru"];
+
+    if (emailDomain && !commonDomains.includes(emailDomain.toLowerCase())) {
       contact = await prisma.contact.findFirst({
-        where: {
-          OR: [
-            { email: { contains: emailDomain } },
-            { companyDomain: emailDomain },
-          ],
-        },
+        where: { companyDomain: emailDomain },
       });
     }
   }
 
+  // If still no contact, create a new one
   if (!contact) {
-    console.warn(`[Inbound] Could not find contact for email: ${fromEmail}`);
-    // Still accept the webhook but log the issue
-    return NextResponse.json({
-      received: true,
-      warning: "Contact not found",
+    console.log(`[Inbound] Creating new contact for email: ${fromEmail}`);
+
+    // Try to extract name from "Name <email>" format
+    const nameMatch = emailData.from.match(/^"?([^"<]+)"?\s*</);
+    const fullName = nameMatch ? nameMatch[1].trim() : fromEmail.split("@")[0];
+    const nameParts = fullName.split(" ");
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    contact = await prisma.contact.create({
+      data: {
+        email: fromEmail,
+        firstName,
+        lastName,
+        fullName,
+      },
     });
+
+    console.log(`[Inbound] Created new contact: ${contact.id}`);
   }
 
   // Create the inbox message
