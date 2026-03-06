@@ -204,6 +204,7 @@ model InboxMessage {
   subject         String
   textBody        String?               @map("text_body")
   htmlBody        String?               @map("html_body")
+  attachments     Json?                 @default("[]")
 
   // Timestamps
   receivedAt      DateTime              @map("received_at")

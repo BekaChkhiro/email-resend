@@ -20,6 +20,12 @@ function formatDateTime(dateStr: string) {
   });
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function ConversationThread({
   contactId,
   contactName,
@@ -172,6 +178,30 @@ export default function ConversationThread({
                   />
                 )}
               </div>
+              {message.attachments && message.attachments.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-opacity-20 border-current">
+                  <div className="flex flex-wrap gap-2">
+                    {message.attachments.map((attachment, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-2 rounded-md px-2 py-1 text-xs ${
+                          message.direction === "outbound"
+                            ? "bg-blue-500 text-blue-100"
+                            : "bg-gray-200 text-gray-600"
+                        }`}
+                      >
+                        <PaperclipIcon className="h-3 w-3" />
+                        <span className="max-w-[120px] truncate">
+                          {attachment.filename}
+                        </span>
+                        <span className="opacity-70">
+                          ({formatFileSize(attachment.size)})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         ))}
@@ -202,6 +232,24 @@ function ArchiveIcon({ className }: { className?: string }) {
         strokeLinejoin="round"
         strokeWidth={2}
         d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"
+      />
+    </svg>
+  );
+}
+
+function PaperclipIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
       />
     </svg>
   );

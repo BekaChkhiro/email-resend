@@ -21,6 +21,12 @@ export type Conversation = {
   unreadCount: number;
 };
 
+export type AttachmentInfo = {
+  filename: string;
+  size: number;
+  contentType: string;
+};
+
 export type Message = {
   id: string;
   direction: "inbound" | "outbound";
@@ -30,6 +36,7 @@ export type Message = {
   subject: string;
   textBody: string | null;
   htmlBody: string | null;
+  attachments: AttachmentInfo[];
   receivedAt: string;
   sentAt: string | null;
 };
@@ -146,6 +153,7 @@ export async function getConversationMessages(
     subject: msg.subject,
     textBody: msg.textBody,
     htmlBody: msg.htmlBody,
+    attachments: (msg.attachments as AttachmentInfo[]) || [],
     receivedAt: msg.receivedAt.toISOString(),
     sentAt: msg.sentAt?.toISOString() ?? null,
   }));
@@ -164,12 +172,18 @@ export async function sendReply(formData: FormData) {
 
   // Process attachments
   const attachments: { filename: string; content: Buffer }[] = [];
+  const attachmentInfos: AttachmentInfo[] = [];
   for (const file of attachmentFiles) {
     if (file.size > 0) {
       const arrayBuffer = await file.arrayBuffer();
       attachments.push({
         filename: file.name,
         content: Buffer.from(arrayBuffer),
+      });
+      attachmentInfos.push({
+        filename: file.name,
+        size: file.size,
+        contentType: file.type || "application/octet-stream",
       });
     }
   }
@@ -265,6 +279,7 @@ export async function sendReply(formData: FormData) {
         toEmail: contact.email,
         subject,
         textBody: body,
+        attachments: attachmentInfos,
         receivedAt: new Date(),
         sentAt: new Date(),
         resendId: result.data?.id ?? null,
