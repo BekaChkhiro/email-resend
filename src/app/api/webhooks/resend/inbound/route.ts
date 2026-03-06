@@ -2,28 +2,37 @@ import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { prisma } from "@/lib/db";
 
-type ResendInboundPayload = {
-  from: string;
-  to: string[];
-  subject: string;
-  text?: string;
-  html?: string;
-  headers: Array<{ name: string; value: string }>;
-  attachments?: Array<{ filename: string; content: string }>;
+type ResendWebhookPayload = {
+  type: string;
+  created_at: string;
+  data: {
+    from: string;
+    to: string[];
+    subject: string;
+    text?: string;
+    html?: string;
+    email_id: string;
+    message_id?: string;
+    headers?: Array<{ name: string; value: string }>;
+    attachments?: Array<{ filename: string; content: string }>;
+  };
 };
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
 
+  console.log("[Inbound] Received webhook");
+
   const svixId = request.headers.get("svix-id");
   const svixTimestamp = request.headers.get("svix-timestamp");
   const svixSignature = request.headers.get("svix-signature");
 
-  let payload: ResendInboundPayload;
+  let payload: ResendWebhookPayload;
 
   const webhookSecret = process.env.RESEND_WEBHOOK_SECRET;
   if (webhookSecret) {
     if (!svixId || !svixTimestamp || !svixSignature) {
+      console.log("[Inbound] Missing svix headers");
       return NextResponse.json(
         { error: "Missing svix headers" },
         { status: 400 }
@@ -36,8 +45,9 @@ export async function POST(request: NextRequest) {
         "svix-id": svixId,
         "svix-timestamp": svixTimestamp,
         "svix-signature": svixSignature,
-      }) as ResendInboundPayload;
-    } catch {
+      }) as ResendWebhookPayload;
+    } catch (err) {
+      console.log("[Inbound] Invalid webhook signature:", err);
       return NextResponse.json(
         { error: "Invalid webhook signature" },
         { status: 400 }
@@ -45,26 +55,41 @@ export async function POST(request: NextRequest) {
     }
   } else {
     console.warn(
-      "RESEND_WEBHOOK_SECRET is not set - skipping signature verification"
+      "[Inbound] RESEND_WEBHOOK_SECRET is not set - skipping signature verification"
     );
     payload = JSON.parse(body);
   }
 
-  // Parse headers into a map
+  // Extract data from the nested structure
+  const emailData = payload.data;
+
+  if (!emailData || !emailData.from) {
+    console.log("[Inbound] Invalid payload structure:", payload);
+    return NextResponse.json(
+      { error: "Invalid payload structure" },
+      { status: 400 }
+    );
+  }
+
+  console.log("[Inbound] Processing email from:", emailData.from);
+
+  // Parse headers into a map if they exist
   const headersMap: Record<string, string> = {};
-  for (const header of payload.headers || []) {
-    headersMap[header.name] = header.value;
+  if (emailData.headers) {
+    for (const header of emailData.headers) {
+      headersMap[header.name] = header.value;
+    }
   }
 
   // Extract sender email (may be in format "Name <email@domain.com>")
-  const fromEmailMatch = payload.from.match(/<([^>]+)>/) || [null, payload.from];
-  const fromEmail = fromEmailMatch[1] || payload.from;
+  const fromEmailMatch = emailData.from.match(/<([^>]+)>/);
+  const fromEmail = fromEmailMatch ? fromEmailMatch[1] : emailData.from;
 
   // Extract recipient email
-  const toEmail = payload.to[0]?.replace(/<|>/g, "") || "";
+  const toEmail = emailData.to?.[0]?.replace(/<|>/g, "") || "";
 
-  // Get the Message-ID from headers
-  const messageId = headersMap["Message-ID"] || headersMap["Message-Id"];
+  // Get the Message-ID (either from headers or directly from data)
+  const messageId = emailData.message_id || headersMap["Message-ID"] || headersMap["Message-Id"];
 
   // Get In-Reply-To header to find the original email
   const inReplyToHeader = headersMap["In-Reply-To"];
@@ -87,6 +112,7 @@ export async function POST(request: NextRequest) {
 
       if (campaignEmail) {
         campaign = campaignEmail.campaign;
+        console.log("[Inbound] Linked to campaign:", campaign.name);
       }
     }
   }
@@ -103,19 +129,19 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // If still no contact, we can't properly associate this message
-  // Create a placeholder or skip? For now, let's still try to find by domain
+  // If still no contact, try to find by email domain match
   if (!contact) {
-    // Try to find contact by email domain match (less reliable)
     const emailDomain = fromEmail.split("@")[1];
-    contact = await prisma.contact.findFirst({
-      where: {
-        OR: [
-          { email: { contains: emailDomain } },
-          { companyDomain: emailDomain },
-        ],
-      },
-    });
+    if (emailDomain) {
+      contact = await prisma.contact.findFirst({
+        where: {
+          OR: [
+            { email: { contains: emailDomain } },
+            { companyDomain: emailDomain },
+          ],
+        },
+      });
+    }
   }
 
   if (!contact) {
@@ -139,9 +165,9 @@ export async function POST(request: NextRequest) {
       status: "unread",
       fromEmail,
       toEmail,
-      subject: payload.subject || "(No subject)",
-      textBody: payload.text ?? null,
-      htmlBody: payload.html ?? null,
+      subject: emailData.subject || "(No subject)",
+      textBody: emailData.text ?? null,
+      htmlBody: emailData.html ?? null,
       receivedAt: new Date(),
     },
   });
