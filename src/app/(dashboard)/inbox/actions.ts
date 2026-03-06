@@ -187,7 +187,7 @@ export async function sendReply(formData: FormData) {
   });
 
   // Try to get the domain from the original campaign email
-  let domain = lastMessage?.campaignEmail?.domain;
+  let domain = lastMessage?.campaignEmail?.domain ?? null;
 
   // If no domain from campaign email, try to find from any message in this conversation
   if (!domain && campaignId) {
@@ -195,7 +195,7 @@ export async function sendReply(formData: FormData) {
       where: { campaignId, contactId },
       include: { domain: true },
     });
-    domain = campaignEmail?.domain;
+    domain = campaignEmail?.domain ?? null;
   }
 
   // Fallback to first active domain
