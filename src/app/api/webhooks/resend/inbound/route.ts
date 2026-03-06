@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
   // Extract data from the nested structure
   const emailData = payload.data;
 
+  console.log("[Inbound] Full payload:", JSON.stringify(payload, null, 2));
+
   if (!emailData || !emailData.from) {
     console.log("[Inbound] Invalid payload structure:", payload);
     return NextResponse.json(
@@ -72,6 +74,8 @@ export async function POST(request: NextRequest) {
   }
 
   console.log("[Inbound] Processing email from:", emailData.from);
+  console.log("[Inbound] Text body:", emailData.text);
+  console.log("[Inbound] HTML body:", emailData.html);
 
   // Parse headers into a map if they exist
   const headersMap: Record<string, string> = {};
