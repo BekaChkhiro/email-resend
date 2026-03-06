@@ -176,14 +176,35 @@ export async function sendReply(formData: FormData) {
       contactId,
       ...(campaignId ? { campaignId } : {}),
     },
+    include: {
+      campaignEmail: {
+        include: {
+          domain: true,
+        },
+      },
+    },
     orderBy: { receivedAt: "desc" },
   });
 
-  // Get an active domain to send from
-  const domain = await prisma.domain.findFirst({
-    where: { isActive: true },
-    orderBy: { createdAt: "asc" },
-  });
+  // Try to get the domain from the original campaign email
+  let domain = lastMessage?.campaignEmail?.domain;
+
+  // If no domain from campaign email, try to find from any message in this conversation
+  if (!domain && campaignId) {
+    const campaignEmail = await prisma.campaignEmail.findFirst({
+      where: { campaignId, contactId },
+      include: { domain: true },
+    });
+    domain = campaignEmail?.domain;
+  }
+
+  // Fallback to first active domain
+  if (!domain) {
+    domain = await prisma.domain.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: "asc" },
+    });
+  }
 
   if (!domain) {
     return { error: "No active sending domain available." };
