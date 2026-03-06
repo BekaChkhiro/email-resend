@@ -156,9 +156,22 @@ export async function sendReply(formData: FormData) {
   const campaignId = formData.get("campaignId") as string | null;
   const body = formData.get("body") as string;
   const replyToMessageId = formData.get("replyToMessageId") as string | null;
+  const attachmentFiles = formData.getAll("attachments") as File[];
 
   if (!contactId || !body?.trim()) {
     return { error: "Contact and message body are required." };
+  }
+
+  // Process attachments
+  const attachments: { filename: string; content: Buffer }[] = [];
+  for (const file of attachmentFiles) {
+    if (file.size > 0) {
+      const arrayBuffer = await file.arrayBuffer();
+      attachments.push({
+        filename: file.name,
+        content: Buffer.from(arrayBuffer),
+      });
+    }
   }
 
   // Get contact
@@ -232,25 +245,18 @@ export async function sendReply(formData: FormData) {
       subject,
       text: body,
       headers: Object.keys(headers).length > 0 ? headers : undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
     });
 
     if (result.error) {
       return { error: result.error.message };
     }
 
-    // Get campaign if exists
-    let campaign = null;
-    if (campaignId) {
-      campaign = await prisma.campaign.findUnique({
-        where: { id: campaignId },
-      });
-    }
-
     // Create inbox message for the reply
     await prisma.inboxMessage.create({
       data: {
         contactId,
-        campaignId: campaign?.id ?? null,
+        campaignId: campaignId || null,
         messageId: result.data?.id ? `<${result.data.id}@resend.dev>` : null,
         inReplyTo: lastMessage?.messageId ?? null,
         direction: "outbound",
