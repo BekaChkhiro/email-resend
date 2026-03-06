@@ -83,10 +83,13 @@ export async function POST(request: NextRequest) {
   if (!textBody && !htmlBody && emailData.email_id) {
     console.log("[Inbound] Fetching email content from API for:", emailData.email_id);
     try {
-      const emailDetails = await resend.emails.get(emailData.email_id);
+      // Use receiving.get() for inbound emails
+      const emailDetails = await resend.emails.receiving.get(emailData.email_id);
+      console.log("[Inbound] API response:", JSON.stringify(emailDetails.data, null, 2));
       if (emailDetails.data) {
-        textBody = (emailDetails.data as { text?: string }).text ?? null;
-        htmlBody = (emailDetails.data as { html?: string }).html ?? null;
+        const data = emailDetails.data as { text?: string; html?: string };
+        textBody = data.text ?? null;
+        htmlBody = data.html ?? null;
         console.log("[Inbound] Fetched text:", textBody?.slice(0, 100));
         console.log("[Inbound] Fetched html:", htmlBody?.slice(0, 100));
       }
