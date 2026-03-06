@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Webhook } from "svix";
 import { prisma } from "@/lib/db";
+import { resend } from "@/lib/resend";
 
 type ResendWebhookPayload = {
   type: string;
@@ -74,8 +75,25 @@ export async function POST(request: NextRequest) {
   }
 
   console.log("[Inbound] Processing email from:", emailData.from);
-  console.log("[Inbound] Text body:", emailData.text);
-  console.log("[Inbound] HTML body:", emailData.html);
+
+  // If text/html not in webhook, try to fetch from Resend API
+  let textBody = emailData.text ?? null;
+  let htmlBody = emailData.html ?? null;
+
+  if (!textBody && !htmlBody && emailData.email_id) {
+    console.log("[Inbound] Fetching email content from API for:", emailData.email_id);
+    try {
+      const emailDetails = await resend.emails.get(emailData.email_id);
+      if (emailDetails.data) {
+        textBody = (emailDetails.data as { text?: string }).text ?? null;
+        htmlBody = (emailDetails.data as { html?: string }).html ?? null;
+        console.log("[Inbound] Fetched text:", textBody?.slice(0, 100));
+        console.log("[Inbound] Fetched html:", htmlBody?.slice(0, 100));
+      }
+    } catch (err) {
+      console.log("[Inbound] Could not fetch email content:", err);
+    }
+  }
 
   // Parse headers into a map if they exist
   const headersMap: Record<string, string> = {};
@@ -170,8 +188,8 @@ export async function POST(request: NextRequest) {
       fromEmail,
       toEmail,
       subject: emailData.subject || "(No subject)",
-      textBody: emailData.text ?? null,
-      htmlBody: emailData.html ?? null,
+      textBody: textBody,
+      htmlBody: htmlBody,
       receivedAt: new Date(),
     },
   });
