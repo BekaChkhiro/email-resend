@@ -15,7 +15,17 @@ model Domain {
   isActive   Boolean  @default(true) @map("is_active")
   createdAt  DateTime @default(now()) @map("created_at")
 
-  campaignEmails CampaignEmail[]
+  // Warmup fields
+  warmupEnabled     Boolean   @default(false) @map("warmup_enabled")
+  warmupStartedAt   DateTime? @map("warmup_started_at")
+  warmupCompletedAt DateTime? @map("warmup_completed_at")
+  warmupDay         Int       @default(0) @map("warmup_day")
+  warmupSentToday   Int       @default(0) @map("warmup_sent_today")
+  warmupLastSentAt  DateTime? @map("warmup_last_sent_at")
+
+  campaignEmails       CampaignEmail[]
+  warmupEmailsSent     WarmupEmail[] @relation("WarmupSender")
+  warmupEmailsReceived WarmupEmail[] @relation("WarmupReceiver")
 
   @@map("domains")
 }
@@ -110,6 +120,12 @@ model Campaign {
   aiPrompt           String?        @map("ai_prompt")
   createdAt          DateTime       @default(now()) @map("created_at")
   sentAt             DateTime?      @map("sent_at")
+
+  // Scheduling - time range, days, and timezone
+  sendStartHour      Int?           @map("send_start_hour")
+  sendEndHour        Int?           @map("send_end_hour")
+  sendDays           Int[]          @default([1, 2, 3, 4, 5]) @map("send_days")
+  timezone           String?
 
   templates      CampaignTemplate[]
   emails         CampaignEmail[]
@@ -219,4 +235,48 @@ model InboxMessage {
   @@index([campaignId])
   @@index([status])
   @@map("inbox_messages")
+}
+
+enum WarmupEmailStatus {
+  pending
+  sent
+  delivered
+  replied
+  failed
+}
+
+enum WarmupConversationType {
+  project_update
+  meeting_scheduling
+  quick_question
+  follow_up
+  document_request
+  general_checkin
+}
+
+model WarmupEmail {
+  id               String                 @id @default(uuid())
+  senderDomainId   String                 @map("sender_domain_id")
+  receiverDomainId String                 @map("receiver_domain_id")
+  resendId         String?                @map("resend_id")
+  messageId        String?                @unique @map("message_id")
+  inReplyTo        String?                @map("in_reply_to")
+  threadId         String                 @map("thread_id")
+  conversationType WarmupConversationType @map("conversation_type")
+  isInitialEmail   Boolean                @default(true) @map("is_initial_email")
+  replyDepth       Int                    @default(0) @map("reply_depth")
+  subject          String
+  body             String
+  status           WarmupEmailStatus      @default(pending)
+  sentAt           DateTime?              @map("sent_at")
+  warmupDay        Int                    @map("warmup_day")
+  createdAt        DateTime               @default(now()) @map("created_at")
+
+  senderDomain   Domain @relation("WarmupSender", fields: [senderDomainId], references: [id], onDelete: Cascade)
+  receiverDomain Domain @relation("WarmupReceiver", fields: [receiverDomainId], references: [id], onDelete: Cascade)
+
+  @@index([threadId])
+  @@index([senderDomainId])
+  @@index([status])
+  @@map("warmup_emails")
 }

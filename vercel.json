@@ -3,6 +3,14 @@
     {
       "path": "/api/cron/send-emails",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/warmup-send",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/warmup-reply",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

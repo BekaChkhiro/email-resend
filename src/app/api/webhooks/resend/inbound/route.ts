@@ -106,12 +106,31 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Skip warmup emails - they have X-Warmup-Thread header
+  if (headersMap["X-Warmup-Thread"]) {
+    console.log("[Inbound] Skipping warmup email:", headersMap["X-Warmup-Thread"]);
+    return NextResponse.json({ received: true, skipped: "warmup" });
+  }
+
   // Extract sender email (may be in format "Name <email@domain.com>")
   const fromEmailMatch = emailData.from.match(/<([^>]+)>/);
   const fromEmail = fromEmailMatch ? fromEmailMatch[1] : emailData.from;
 
   // Extract recipient email
   const toEmail = emailData.to?.[0]?.replace(/<|>/g, "") || "";
+
+  // Fallback warmup check: if both sender and receiver are our warmup-enabled domains
+  const senderDomain = await prisma.domain.findFirst({
+    where: { fromEmail, warmupEnabled: true },
+  });
+  const receiverDomain = await prisma.domain.findFirst({
+    where: { fromEmail: toEmail, warmupEnabled: true },
+  });
+
+  if (senderDomain && receiverDomain) {
+    console.log("[Inbound] Skipping warmup email (domain check):", fromEmail, "->", toEmail);
+    return NextResponse.json({ received: true, skipped: "warmup" });
+  }
 
   // Get the Message-ID (either from headers or directly from data)
   const messageId = emailData.message_id || headersMap["Message-ID"] || headersMap["Message-Id"];

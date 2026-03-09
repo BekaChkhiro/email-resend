@@ -8,6 +8,11 @@ export async function createCampaign(formData: FormData) {
   const subject = formData.get("subject") as string;
   const emailFormat = formData.get("emailFormat") as string;
   const delaySeconds = parseInt(formData.get("delaySeconds") as string) || 0;
+  const timezone = formData.get("timezone") as string || null;
+  const sendStartHour = timezone ? parseInt(formData.get("sendStartHour") as string) : null;
+  const sendEndHour = timezone ? parseInt(formData.get("sendEndHour") as string) : null;
+  const sendDaysRaw = formData.get("sendDays") as string;
+  const sendDays = sendDaysRaw ? JSON.parse(sendDaysRaw) as number[] : [1, 2, 3, 4, 5];
 
   if (!name || !subject) {
     return { error: "Campaign name and subject are required." };
@@ -21,8 +26,25 @@ export async function createCampaign(formData: FormData) {
     return { error: "Delay must be a non-negative number." };
   }
 
+  if (sendStartHour !== null && sendEndHour !== null && sendStartHour >= sendEndHour) {
+    return { error: "Start hour must be before end hour." };
+  }
+
+  if (timezone && sendDays.length === 0) {
+    return { error: "At least one send day must be selected." };
+  }
+
   const campaign = await prisma.campaign.create({
-    data: { name, subject, emailFormat, delaySeconds },
+    data: {
+      name,
+      subject,
+      emailFormat,
+      delaySeconds,
+      timezone,
+      sendStartHour,
+      sendEndHour,
+      sendDays,
+    },
   });
 
   revalidatePath("/campaigns");
@@ -34,6 +56,11 @@ export async function updateCampaign(id: string, formData: FormData) {
   const subject = formData.get("subject") as string;
   const emailFormat = formData.get("emailFormat") as string;
   const delaySeconds = parseInt(formData.get("delaySeconds") as string) || 0;
+  const timezone = formData.get("timezone") as string || null;
+  const sendStartHour = timezone ? parseInt(formData.get("sendStartHour") as string) : null;
+  const sendEndHour = timezone ? parseInt(formData.get("sendEndHour") as string) : null;
+  const sendDaysRaw = formData.get("sendDays") as string;
+  const sendDays = sendDaysRaw ? JSON.parse(sendDaysRaw) as number[] : [1, 2, 3, 4, 5];
 
   if (!name || !subject) {
     return { error: "Campaign name and subject are required." };
@@ -41,6 +68,14 @@ export async function updateCampaign(id: string, formData: FormData) {
 
   if (emailFormat !== "html" && emailFormat !== "plain_text") {
     return { error: "Email format must be html or plain_text." };
+  }
+
+  if (sendStartHour !== null && sendEndHour !== null && sendStartHour >= sendEndHour) {
+    return { error: "Start hour must be before end hour." };
+  }
+
+  if (timezone && sendDays.length === 0) {
+    return { error: "At least one send day must be selected." };
   }
 
   const campaign = await prisma.campaign.findUnique({ where: { id } });
@@ -54,7 +89,16 @@ export async function updateCampaign(id: string, formData: FormData) {
 
   await prisma.campaign.update({
     where: { id },
-    data: { name, subject, emailFormat, delaySeconds },
+    data: {
+      name,
+      subject,
+      emailFormat,
+      delaySeconds,
+      timezone,
+      sendStartHour,
+      sendEndHour,
+      sendDays,
+    },
   });
 
   revalidatePath("/campaigns");

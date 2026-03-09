@@ -25,6 +25,10 @@ export async function GET(request: Request) {
       subject: true,
       emailFormat: true,
       delaySeconds: true,
+      timezone: true,
+      sendStartHour: true,
+      sendEndHour: true,
+      sendDays: true,
     },
   });
 
@@ -38,6 +42,44 @@ export async function GET(request: Request) {
 
   for (const campaign of sendingCampaigns) {
     console.log(`[CRON] Processing campaign: ${campaign.id}`);
+
+    // Check if we're within the allowed sending hours and days for this timezone
+    if (campaign.timezone && campaign.sendStartHour !== null && campaign.sendEndHour !== null) {
+      const now = new Date();
+
+      // Get current hour in campaign's timezone
+      const hourFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: campaign.timezone,
+        hour: "numeric",
+        hour12: false,
+      });
+      const currentHour = parseInt(hourFormatter.format(now));
+
+      // Get current day of week in campaign's timezone (0 = Sunday, 1 = Monday, etc.)
+      const dayFormatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: campaign.timezone,
+        weekday: "short",
+      });
+      const dayName = dayFormatter.format(now);
+      const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+      const currentDay = dayMap[dayName];
+
+      // Check if current day is allowed
+      if (campaign.sendDays.length > 0 && !campaign.sendDays.includes(currentDay)) {
+        console.log(
+          `[CRON] Campaign ${campaign.id}: not a send day (allowed: ${campaign.sendDays.join(",")}, current: ${currentDay}/${dayName})`
+        );
+        continue;
+      }
+
+      // Check if current hour is within range
+      if (currentHour < campaign.sendStartHour || currentHour >= campaign.sendEndHour) {
+        console.log(
+          `[CRON] Campaign ${campaign.id}: outside sending hours (${campaign.sendStartHour}:00-${campaign.sendEndHour}:00 ${campaign.timezone}, current: ${currentHour}:00)`
+        );
+        continue;
+      }
+    }
 
     // Get the last sent email to check delay
     const lastSentEmail = await prisma.campaignEmail.findFirst({

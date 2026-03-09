@@ -137,11 +137,23 @@ export default async function CampaignDetailPage({
             {campaign.status}
           </span>
         </div>
-        <div className="mt-3 flex gap-4 text-sm text-gray-500">
+        <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-500">
           <span>
             Format: {campaign.emailFormat === "html" ? "HTML" : "Plain Text"}
           </span>
           <span>Delay: {campaign.delaySeconds}s</span>
+          {campaign.timezone && campaign.sendStartHour !== null && campaign.sendEndHour !== null && (
+            <span>
+              Schedule: {campaign.sendStartHour.toString().padStart(2, "0")}:00 - {campaign.sendEndHour.toString().padStart(2, "0")}:00,{" "}
+              {campaign.sendDays.length === 7
+                ? "Every day"
+                : campaign.sendDays
+                    .sort((a, b) => a - b)
+                    .map((d) => ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d])
+                    .join(", ")}{" "}
+              ({campaign.timezone.replace(/_/g, " ")})
+            </span>
+          )}
           {campaign.sentAt && (
             <span suppressHydrationWarning>
               Sent: {new Date(campaign.sentAt).toLocaleString()}
