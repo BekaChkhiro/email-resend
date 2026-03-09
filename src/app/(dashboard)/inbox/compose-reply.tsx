@@ -1,8 +1,100 @@
 "use client";
 
 import { useRef, useState, useTransition, useEffect } from "react";
-import { sendReply, generateAIReply, AIAction, Message } from "./actions";
+import { sendReply, generateAIReply, AIAction, Message, checkSpamWithAI, AISpamCheckResult } from "./actions";
 import { Button } from "@/components/ui";
+
+// Spam trigger words by category
+// Note: Removed legitimate business words like "investment", "credit", "save", "loan" that are commonly used
+const SPAM_WORDS: Record<string, string[]> = {
+  "Financial": [
+    "pure profit", "million dollars", "financial freedom", "get paid", "money back", "extra income",
+    "no fees", "cash bonus", "extra cash", "easy money", "penny stocks", "no hidden charges",
+    "no hidden costs", "be your own boss", "unsecured credit", "double your money", "make money fast",
+    "earn cash", "free money", "100% free", "big bucks", "cash prize"
+  ],
+  "Urgency": [
+    "limited offer", "act now", "urgent", "immediate", "deadline", "only a few left", "hurry",
+    "last chance", "today only", "final hours", "while supplies last", "one time", "expires",
+    "never again", "don't miss", "rush", "time-sensitive", "offer expires", "instant access",
+    "closing soon", "final call", "once in a lifetime", "limited time", "now or never", "flash sale",
+    "countdown", "last minute deal", "rare opportunity", "ends tonight"
+  ],
+  "Marketing": [
+    "buy now", "serious bargain", "special promotion", "winner", "giveaway", "free gift",
+    "prize", "clearance", "no obligation", "limited time offer", "save big", "risk-free",
+    "mega sale", "100% free", "best deal", "order now", "call now", "apply now"
+  ],
+  "Exaggerated": [
+    "miracle", "amazing", "incredible", "magic", "revolutionary", "sensational", "unbelievable",
+    "phenomenal", "fantastic", "life-changing", "unmatched", "breakthrough", "stunning",
+    "spectacular", "extraordinary", "astounding", "remarkable", "unprecedented", "jaw-dropping",
+    "breathtaking", "groundbreaking", "mind-blowing", "unrivaled", "ultimate"
+  ],
+  "Suspicious": [
+    "click here", "download now", "unsubscribe here", "see attachment", "open this",
+    "click to view", "access here", "click below", "view now", "install now", "activate link",
+    "click to open", "secure download", "you have been selected", "you're a winner",
+    "congratulations", "dear friend", "dear beneficiary", "you have been chosen"
+  ]
+};
+
+interface SpamCheckResult {
+  isSpammy: boolean;
+  score: number; // 0-100
+  foundWords: { word: string; category: string; severity: "low" | "medium" | "high" }[];
+}
+
+// Severity weights for different categories
+const CATEGORY_SEVERITY: Record<string, "low" | "medium" | "high"> = {
+  "Financial": "high",
+  "Urgency": "medium",
+  "Marketing": "low",
+  "Exaggerated": "low",
+  "Suspicious": "high",
+};
+
+function checkForSpam(text: string): SpamCheckResult {
+  const lowerText = text.toLowerCase();
+  const foundWords: { word: string; category: string; severity: "low" | "medium" | "high" }[] = [];
+  const alreadyFound = new Set<string>();
+
+  for (const [category, words] of Object.entries(SPAM_WORDS)) {
+    for (const word of words) {
+      // Use word boundary regex to match whole words only
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\b${escapedWord}\\b`, 'i');
+
+      if (regex.test(lowerText) && !alreadyFound.has(word.toLowerCase())) {
+        alreadyFound.add(word.toLowerCase());
+        foundWords.push({
+          word,
+          category,
+          severity: CATEGORY_SEVERITY[category] || "low"
+        });
+      }
+    }
+  }
+
+  // Calculate spam score based on severity
+  // Low = 1 point, Medium = 2 points, High = 3 points
+  // Scale to 0-10 range similar to other checkers
+  let rawScore = 0;
+  for (const item of foundWords) {
+    if (item.severity === "low") rawScore += 1;
+    else if (item.severity === "medium") rawScore += 2;
+    else rawScore += 3;
+  }
+
+  // Cap at 10 and scale for display
+  const score = Math.min(rawScore, 10);
+
+  return {
+    isSpammy: foundWords.length > 0,
+    score,
+    foundWords,
+  };
+}
 
 export default function ComposeReply({
   contactId,
@@ -31,6 +123,8 @@ export default function ComposeReply({
   const [aiAction, setAiAction] = useState<AIAction | null>(null);
   const [showAIPrompt, setShowAIPrompt] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  const [spamResult, setSpamResult] = useState<AISpamCheckResult | null>(null);
+  const [isSpamChecking, setIsSpamChecking] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const aiMenuRef = useRef<HTMLDivElement>(null);
@@ -215,6 +309,27 @@ export default function ComposeReply({
 
   const hasContent = body.trim().length > 0 || attachments.length > 0;
 
+  async function handleSpamCheck() {
+    setIsAIMenuOpen(false);
+    if (!body.trim()) return;
+
+    setIsSpamChecking(true);
+    setError(null);
+
+    try {
+      const result = await checkSpamWithAI(body);
+      if ("error" in result) {
+        setError(result.error);
+      } else {
+        setSpamResult(result);
+      }
+    } catch {
+      setError("Spam check failed. Please try again.");
+    } finally {
+      setIsSpamChecking(false);
+    }
+  }
+
   const aiActions: { action: AIAction | "generate_auto" | "generate_custom"; label: string; icon: React.ReactNode; requiresText: boolean; isSubItem?: boolean }[] = [
     {
       action: "generate_auto",
@@ -314,6 +429,118 @@ export default function ComposeReply({
         </div>
       )}
 
+      {/* Spam Check Result */}
+      {spamResult && (
+        <div className={`mb-3 overflow-hidden rounded-xl border ${
+          spamResult.risk === "none"
+            ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+            : spamResult.risk === "low"
+            ? "border-yellow-200 bg-yellow-50 dark:border-yellow-500/30 dark:bg-yellow-500/10"
+            : spamResult.risk === "medium"
+            ? "border-orange-200 bg-orange-50 dark:border-orange-500/30 dark:bg-orange-500/10"
+            : "border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10"
+        }`}>
+          <div className={`flex items-center justify-between border-b px-4 py-2 ${
+            spamResult.risk === "none"
+              ? "border-emerald-200 dark:border-emerald-500/30"
+              : spamResult.risk === "low"
+              ? "border-yellow-200 dark:border-yellow-500/30"
+              : spamResult.risk === "medium"
+              ? "border-orange-200 dark:border-orange-500/30"
+              : "border-red-200 dark:border-red-500/30"
+          }`}>
+            <div className="flex items-center gap-2">
+              <ShieldIcon className={`h-4 w-4 ${
+                spamResult.risk === "none"
+                  ? "text-emerald-600 dark:text-emerald-400"
+                  : spamResult.risk === "low"
+                  ? "text-yellow-600 dark:text-yellow-400"
+                  : spamResult.risk === "medium"
+                  ? "text-orange-600 dark:text-orange-400"
+                  : "text-red-600 dark:text-red-400"
+              }`} />
+              <span className={`text-sm font-medium ${
+                spamResult.risk === "none"
+                  ? "text-emerald-700 dark:text-emerald-400"
+                  : spamResult.risk === "low"
+                  ? "text-yellow-700 dark:text-yellow-400"
+                  : spamResult.risk === "medium"
+                  ? "text-orange-700 dark:text-orange-400"
+                  : "text-red-700 dark:text-red-400"
+              }`}>
+                Spam Score: {spamResult.score}/10
+              </span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                spamResult.risk === "none"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
+                  : spamResult.risk === "low"
+                  ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400"
+                  : spamResult.risk === "medium"
+                  ? "bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400"
+                  : "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400"
+              }`}>
+                {spamResult.risk === "none" ? "Clean" : spamResult.risk.charAt(0).toUpperCase() + spamResult.risk.slice(1) + " risk"}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSpamResult(null)}
+              className="rounded-full p-1 text-gray-400 hover:bg-gray-200 dark:hover:bg-zinc-700"
+            >
+              <XIcon className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Summary */}
+          <div className="border-b border-gray-100 px-4 py-2 dark:border-zinc-700/50">
+            <p className="text-sm text-gray-600 dark:text-zinc-300">{spamResult.summary}</p>
+          </div>
+
+          {/* Issues with suggestions */}
+          {spamResult.issues.length > 0 && (
+            <div className="p-3">
+              <div className="mb-3 flex items-center justify-between">
+                <p className="text-xs font-medium text-gray-500 dark:text-zinc-400">
+                  {spamResult.issues.length} issue{spamResult.issues.length > 1 ? "s" : ""} found:
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSpamResult(null);
+                    handleAIAction("fix_spam" as AIAction);
+                  }}
+                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-emerald-700"
+                >
+                  <WandIcon className="h-3 w-3" />
+                  Fix All with AI
+                </button>
+              </div>
+              <div className="space-y-2">
+                {spamResult.issues.map((issue, i) => (
+                  <div
+                    key={i}
+                    className="rounded-lg bg-white p-2.5 ring-1 ring-gray-200 dark:bg-zinc-800 dark:ring-zinc-700"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="mt-0.5 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-500/20 dark:text-red-400">
+                        {issue.word}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500 dark:text-zinc-400">{issue.reason}</p>
+                        <p className="mt-1 flex items-center gap-1 text-xs">
+                          <span className="text-gray-400">→</span>
+                          <span className="font-medium text-emerald-600 dark:text-emerald-400">{issue.suggestion}</span>
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* AI Prompt Input */}
       {showAIPrompt && (
         <div className="mb-3 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10">
@@ -370,10 +597,11 @@ export default function ComposeReply({
         }`}
       >
         {/* AI Loading indicator */}
-        {isAILoading && (
+        {(isAILoading || isSpamChecking) && (
           <div className="flex items-center gap-2 rounded-t-xl border-b border-gray-200 bg-gray-50 px-4 py-2 dark:border-zinc-700 dark:bg-zinc-900">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
             <span className="text-sm text-gray-500 dark:text-zinc-400">
+              {isSpamChecking && "Analyzing for spam triggers..."}
               {aiAction === "generate_reply" && "Generating reply..."}
               {aiAction === "improve" && "Improving text..."}
               {aiAction === "shorter" && "Shortening..."}
@@ -381,6 +609,7 @@ export default function ComposeReply({
               {aiAction === "formal" && "Making more formal..."}
               {aiAction === "friendly" && "Making friendlier..."}
               {aiAction === "fix_grammar" && "Fixing grammar..."}
+              {aiAction === "fix_spam" && "Removing spam triggers..."}
             </span>
           </div>
         )}
@@ -393,7 +622,7 @@ export default function ComposeReply({
           onBlur={() => setIsFocused(false)}
           onKeyDown={handleKeyDown}
           placeholder="Type your reply..."
-          disabled={isPending || isAILoading}
+          disabled={isPending || isAILoading || isSpamChecking}
           style={{ minHeight: "80px" }}
           className="w-full resize-y overflow-y-auto rounded-t-xl border-0 bg-gray-50 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-0 disabled:opacity-50 dark:bg-zinc-900 dark:text-white dark:placeholder-zinc-500"
         />
@@ -486,6 +715,24 @@ export default function ComposeReply({
                         );
                       })}
                     </div>
+                  </div>
+                  {/* Spam Check section */}
+                  <div className="border-t border-gray-100 dark:border-zinc-700">
+                    <button
+                      type="button"
+                      onClick={handleSpamCheck}
+                      disabled={!body.trim() || isSpamChecking}
+                      className={`flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition-colors ${
+                        !body.trim() || isSpamChecking
+                          ? "cursor-not-allowed text-gray-300 dark:text-zinc-600"
+                          : "text-gray-700 hover:bg-gray-100 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                      }`}
+                    >
+                      <span className={!body.trim() || isSpamChecking ? "text-gray-300 dark:text-zinc-600" : "text-orange-500 dark:text-orange-400"}>
+                        <ShieldIcon className="h-4 w-4" />
+                      </span>
+                      Spam Check (AI)
+                    </button>
                   </div>
                 </div>
               )}
@@ -629,6 +876,14 @@ function PencilIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L6.832 19.82a4.5 4.5 0 01-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 011.13-1.897L16.863 4.487zm0 0L19.5 7.125" />
+    </svg>
+  );
+}
+
+function ShieldIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
     </svg>
   );
 }

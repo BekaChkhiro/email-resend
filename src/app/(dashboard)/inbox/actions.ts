@@ -354,7 +354,8 @@ export type AIAction =
   | "longer"
   | "formal"
   | "friendly"
-  | "fix_grammar";
+  | "fix_grammar"
+  | "fix_spam";
 
 interface AIReplyRequest {
   action: AIAction;
@@ -503,6 +504,25 @@ Rules:
 "${currentText}"`;
       break;
 
+    case "fix_spam":
+      systemPrompt = `You are an expert email deliverability specialist. Rewrite the email to avoid spam filters while keeping the same meaning and intent.
+
+Rules:
+- Replace spam trigger words with professional alternatives
+- Avoid urgency phrases like "act now", "limited time", "hurry"
+- Avoid financial spam words like "free money", "cash bonus", "no fees"
+- Avoid exaggerated claims like "miracle", "amazing", "incredible"
+- Keep the same meaning, tone, and intent
+- Make it sound natural and professional
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Rewrite this email to avoid spam triggers while keeping the same meaning:
+
+"${currentText}"`;
+      break;
+
     default:
       return { error: "Unknown AI action" };
   }
@@ -522,5 +542,72 @@ Rules:
   } catch (err) {
     console.error("[AI Reply] Error:", err);
     return { error: "AI generation failed. Please try again." };
+  }
+}
+
+// AI-powered spam check
+export interface AISpamCheckResult {
+  score: number; // 0-10
+  risk: "none" | "low" | "medium" | "high";
+  issues: { word: string; reason: string; suggestion: string }[];
+  summary: string;
+}
+
+export async function checkSpamWithAI(text: string): Promise<AISpamCheckResult | { error: string }> {
+  const systemPrompt = `You are an expert email deliverability specialist. Analyze the email for spam triggers and deliverability issues.
+
+You must respond ONLY with valid JSON in this exact format:
+{
+  "score": <number 0-10>,
+  "risk": "<none|low|medium|high>",
+  "issues": [
+    {"word": "<problematic word/phrase>", "reason": "<why it's problematic>", "suggestion": "<alternative>"}
+  ],
+  "summary": "<brief summary in 1 sentence>"
+}
+
+Scoring guide:
+- 0: Perfect, no issues
+- 1-3: Low risk, minor issues
+- 4-6: Medium risk, should fix
+- 7-10: High risk, likely to be flagged as spam
+
+Check for:
+1. Spam trigger words (free, urgent, act now, limited time, etc.)
+2. Excessive punctuation (!!!, ???, ALL CAPS)
+3. Pushy/salesy language
+4. Unrealistic promises or claims
+5. Pressure tactics and urgency
+6. Financial/money-related spam patterns
+7. Suspicious phrases that spam filters catch
+
+Be thorough but fair - legitimate business language is OK.`;
+
+  const userPrompt = `Analyze this email for spam triggers:
+
+"${text}"`;
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((block) => block.type === "text");
+    const responseText = textBlock?.text?.trim() ?? "";
+
+    // Parse JSON response
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      return { error: "Failed to parse AI response" };
+    }
+
+    const result = JSON.parse(jsonMatch[0]) as AISpamCheckResult;
+    return result;
+  } catch (err) {
+    console.error("[AI Spam Check] Error:", err);
+    return { error: "AI spam check failed. Please try again." };
   }
 }
