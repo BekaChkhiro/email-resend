@@ -428,6 +428,9 @@ export default function ConversationThread({
         campaignId={campaignId}
         lastMessageId={messages[messages.length - 1]?.id}
         onSent={handleReplySent}
+        conversationHistory={messages}
+        contactName={contactName}
+        contactEmail={contactEmail}
       />
 
       <Dialog />

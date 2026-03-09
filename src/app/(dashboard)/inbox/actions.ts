@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db";
 import { resend } from "@/lib/resend";
+import { anthropic } from "@/lib/anthropic";
 import { revalidatePath } from "next/cache";
 
 export type Conversation = {
@@ -343,4 +344,183 @@ export async function getInboxStats() {
   });
 
   return { unreadCount };
+}
+
+// AI Reply Generation Types
+export type AIAction =
+  | "generate_reply"
+  | "improve"
+  | "shorter"
+  | "longer"
+  | "formal"
+  | "friendly"
+  | "fix_grammar";
+
+interface AIReplyRequest {
+  action: AIAction;
+  currentText: string;
+  conversationHistory: Message[];
+  contactName: string;
+  contactEmail: string;
+  customPrompt?: string;
+}
+
+export async function generateAIReply(request: AIReplyRequest): Promise<{ text?: string; error?: string }> {
+  const { action, currentText, conversationHistory, contactName, customPrompt } = request;
+
+  // Build conversation context
+  const conversationContext = conversationHistory
+    .slice(-10) // Last 10 messages for context
+    .map((msg) => {
+      const sender = msg.direction === "inbound" ? contactName : "Me";
+      const body = msg.textBody || "(no text content)";
+      return `[${sender}]: ${body.slice(0, 500)}${body.length > 500 ? "..." : ""}`;
+    })
+    .join("\n\n");
+
+  let systemPrompt = "";
+  let userPrompt = "";
+
+  switch (action) {
+    case "generate_reply":
+      systemPrompt = `You are an expert email assistant. Generate a professional, helpful email reply based on the conversation context and user instructions.
+
+Rules:
+- Write a natural, human-sounding reply
+- Keep it concise but complete
+- Be professional yet personable
+- Follow the user's specific instructions if provided
+- Do not include subject line, greetings like "Dear X" or signatures - just the body
+- Write in plain text, no HTML
+- If the conversation is in a non-English language, reply in that same language
+- If the user's instructions are in a specific language, write the reply in that language`;
+
+      userPrompt = `Here's the email conversation with ${contactName}:
+
+${conversationContext}
+
+${customPrompt ? `User instructions: ${customPrompt}` : "Generate a professional reply to the last message."}`;
+      break;
+
+    case "improve":
+      systemPrompt = `You are an expert email editor. Improve the given email text while keeping the same meaning and intent.
+
+Rules:
+- Make it clearer and more professional
+- Fix any awkward phrasing
+- Keep the same tone and intent
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Improve this email reply:
+
+"${currentText}"
+
+Context - conversation with ${contactName}:
+${conversationContext}`;
+      break;
+
+    case "shorter":
+      systemPrompt = `You are an expert email editor. Make the email more concise while keeping the key points.
+
+Rules:
+- Remove unnecessary words and phrases
+- Keep the main message intact
+- Maintain professionalism
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Make this email reply shorter and more concise:
+
+"${currentText}"`;
+      break;
+
+    case "longer":
+      systemPrompt = `You are an expert email editor. Expand the email with more detail while keeping it natural.
+
+Rules:
+- Add relevant details and context
+- Elaborate on key points
+- Keep it professional and focused
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Expand this email reply with more detail:
+
+"${currentText}"
+
+Context - conversation with ${contactName}:
+${conversationContext}`;
+      break;
+
+    case "formal":
+      systemPrompt = `You are an expert email editor. Rewrite the email in a more formal, professional tone.
+
+Rules:
+- Use formal language and phrasing
+- Remove casual expressions
+- Keep the same meaning
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Rewrite this email reply in a more formal tone:
+
+"${currentText}"`;
+      break;
+
+    case "friendly":
+      systemPrompt = `You are an expert email editor. Rewrite the email in a warmer, friendlier tone.
+
+Rules:
+- Use friendly, approachable language
+- Keep it professional but warm
+- Keep the same meaning
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Rewrite this email reply in a friendlier tone:
+
+"${currentText}"`;
+      break;
+
+    case "fix_grammar":
+      systemPrompt = `You are an expert proofreader. Fix any grammar, spelling, or punctuation errors in the email.
+
+Rules:
+- Only fix errors, don't change the style or meaning
+- Preserve the original tone
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Fix any grammar, spelling, or punctuation errors in this email reply:
+
+"${currentText}"`;
+      break;
+
+    default:
+      return { error: "Unknown AI action" };
+  }
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((block) => block.type === "text");
+    const text = textBlock?.text?.trim() ?? "";
+
+    return { text };
+  } catch (err) {
+    console.error("[AI Reply] Error:", err);
+    return { error: "AI generation failed. Please try again." };
+  }
 }
