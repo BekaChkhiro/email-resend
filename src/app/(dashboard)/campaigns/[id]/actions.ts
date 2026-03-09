@@ -4,6 +4,17 @@ import { prisma } from "@/lib/db";
 import { resend } from "@/lib/resend";
 import { replaceTemplateVariables } from "@/lib/template";
 import { revalidatePath } from "next/cache";
+import { anthropic } from "@/lib/anthropic";
+
+// AI Prompt Action Types
+export type AIPromptAction =
+  | "improve"
+  | "shorter"
+  | "longer"
+  | "formal"
+  | "friendly"
+  | "fix_grammar"
+  | "generate_custom";
 
 export async function prepareCampaignEmails(campaignId: string) {
   console.log("[SEND] Starting prepareCampaignEmails for:", campaignId);
@@ -382,4 +393,145 @@ export async function getGeneratedEmails(campaignId: string) {
     companyName: e.contact.companyName,
     generatedBody: e.generatedBody ?? "",
   }));
+}
+
+// AI Prompt Generation
+interface AIPromptRequest {
+  action: AIPromptAction;
+  currentText: string;
+  customPrompt?: string;
+}
+
+export async function generateAIPrompt(request: AIPromptRequest): Promise<{ text?: string; error?: string }> {
+  const { action, currentText, customPrompt } = request;
+
+  let systemPrompt = "";
+  let userPrompt = "";
+
+  switch (action) {
+    case "generate_custom":
+      systemPrompt = `You are an expert email marketing strategist. Generate clear, effective AI prompt instructions for personalized email generation.
+
+Rules:
+- Write instructions that ChatGPT can follow to generate personalized emails
+- Include placeholders like {{firstName}}, {{companyName}}, {{companyIndustry}}, etc.
+- Be specific about tone, length, and style
+- Focus on the user's specific request
+- Write in a clear, instructional format
+- Output only the prompt text, no explanations`;
+
+      userPrompt = `Create an AI prompt for email generation based on this request:
+
+"${customPrompt}"
+
+If helpful, use these available placeholders: {{firstName}}, {{lastName}}, {{title}}, {{companyName}}, {{companyIndustry}}, {{companySize}}, {{companyRevenue}}, {{companyFunding}}, {{companyType}}, {{companyDescription}}, {{location}}, {{region}}, {{country}}, {{decisionMaker}}`;
+      break;
+
+    case "improve":
+      systemPrompt = `You are an expert email marketing strategist. Improve the given AI prompt instructions while keeping the same intent.
+
+Rules:
+- Make it clearer and more specific
+- Add missing details that would help generate better emails
+- Keep the same intent and tone
+- Use available placeholders effectively
+- Output only the improved prompt text, no explanations`;
+
+      userPrompt = `Improve this AI prompt for email generation:
+
+"${currentText}"`;
+      break;
+
+    case "shorter":
+      systemPrompt = `You are an expert editor. Make the AI prompt more concise while keeping the key instructions.
+
+Rules:
+- Remove unnecessary words and phrases
+- Keep the main instructions intact
+- Maintain clarity
+- Output only the shortened prompt text, no explanations`;
+
+      userPrompt = `Make this AI prompt shorter and more concise:
+
+"${currentText}"`;
+      break;
+
+    case "longer":
+      systemPrompt = `You are an expert email marketing strategist. Expand the AI prompt with more detailed instructions.
+
+Rules:
+- Add helpful details about tone, style, and format
+- Include more specific guidance for the AI
+- Suggest using more placeholders for personalization
+- Keep it focused and practical
+- Output only the expanded prompt text, no explanations`;
+
+      userPrompt = `Expand this AI prompt with more detail:
+
+"${currentText}"
+
+Available placeholders: {{firstName}}, {{lastName}}, {{title}}, {{companyName}}, {{companyIndustry}}, {{companySize}}, {{companyRevenue}}, {{companyFunding}}, {{companyType}}, {{companyDescription}}, {{location}}, {{region}}, {{country}}, {{decisionMaker}}`;
+      break;
+
+    case "formal":
+      systemPrompt = `You are an expert editor. Rewrite the AI prompt to generate more formal, professional emails.
+
+Rules:
+- Adjust instructions to produce formal tone
+- Add guidance for professional language
+- Keep the same structure and intent
+- Output only the revised prompt text, no explanations`;
+
+      userPrompt = `Rewrite this AI prompt to generate more formal emails:
+
+"${currentText}"`;
+      break;
+
+    case "friendly":
+      systemPrompt = `You are an expert editor. Rewrite the AI prompt to generate warmer, friendlier emails.
+
+Rules:
+- Adjust instructions to produce friendly tone
+- Add guidance for approachable language
+- Keep the same structure and intent
+- Output only the revised prompt text, no explanations`;
+
+      userPrompt = `Rewrite this AI prompt to generate friendlier emails:
+
+"${currentText}"`;
+      break;
+
+    case "fix_grammar":
+      systemPrompt = `You are an expert proofreader. Fix any grammar, spelling, or punctuation errors in the AI prompt.
+
+Rules:
+- Only fix errors, don't change the meaning
+- Preserve the original style and intent
+- Output only the corrected prompt text, no explanations`;
+
+      userPrompt = `Fix any grammar, spelling, or punctuation errors in this AI prompt:
+
+"${currentText}"`;
+      break;
+
+    default:
+      return { error: "Unknown AI action" };
+  }
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((block) => block.type === "text");
+    const text = textBlock?.text?.trim() ?? "";
+
+    return { text };
+  } catch (err) {
+    console.error("[AI Prompt] Error:", err);
+    return { error: "AI generation failed. Please try again." };
+  }
 }
