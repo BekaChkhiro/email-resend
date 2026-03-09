@@ -1,22 +1,36 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
+/* Override Tailwind's gray colors with zinc in dark mode */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Override gray palette with zinc values */
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f4f4f5;
+  --color-gray-200: #e4e4e7;
+  --color-gray-300: #d4d4d8;
+  --color-gray-400: #a1a1aa;
+  --color-gray-500: #71717a;
+  --color-gray-600: #52525b;
+  --color-gray-700: #3f3f46;
+  --color-gray-800: #27272a;
+  --color-gray-900: #18181b;
+  --color-gray-950: #09090b;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+.dark {
+  --background: #18181b;
+  --foreground: #e4e4e7;
 }
 
 body {
@@ -25,10 +39,52 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Input fields in dark mode */
+.dark input, .dark textarea, .dark select {
+  background-color: #27272a !important;
+  border-color: #52525b !important;
+  color: #e4e4e7 !important;
+}
+
+.dark input::placeholder, .dark textarea::placeholder {
+  color: #71717a !important;
+}
+
+.dark input:focus, .dark textarea:focus, .dark select:focus {
+  border-color: #10b981 !important;
+  outline: none;
+  box-shadow: 0 0 0 1px #10b981;
+}
+
+/* Scrollbar styling for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #27272a;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #52525b;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
 .email-content p {
   margin-bottom: 0.75rem;
 }
 
 .email-content p:last-child {
   margin-bottom: 0;
+}
+
+/* Keep email content previews light for readability */
+.email-preview-content {
+  background-color: #ffffff !important;
+  color: #111827 !important;
 }

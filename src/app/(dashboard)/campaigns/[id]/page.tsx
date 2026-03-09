@@ -9,10 +9,10 @@ import AiEmailGenerator from "./ai-email-generator";
 import CampaignAnalytics from "./campaign-analytics";
 
 const statusStyles: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
-  sending: "bg-blue-100 text-blue-700",
-  completed: "bg-green-100 text-green-700",
-  paused: "bg-yellow-100 text-yellow-700",
+  draft: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
+  sending: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  completed: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  paused: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
 };
 
 export default async function CampaignDetailPage({
@@ -115,29 +115,29 @@ export default async function CampaignDetailPage({
       <div className="mb-6">
         <Link
           href="/campaigns"
-          className="text-sm text-blue-600 hover:text-blue-800"
+          className="text-sm text-emerald-600 hover:text-emerald-800"
         >
           &larr; Back to campaigns
         </Link>
       </div>
 
-      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-6">
+      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
               {campaign.name}
             </h1>
-            <p className="mt-1 text-sm text-gray-500">
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Subject: {campaign.subject}
             </p>
           </div>
           <span
-            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[campaign.status] ?? "bg-gray-100 text-gray-700"}`}
+            className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[campaign.status] ?? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
           >
             {campaign.status}
           </span>
         </div>
-        <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-500">
+        <div className="mt-3 flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
           <span>
             Format: {campaign.emailFormat === "html" ? "HTML" : "Plain Text"}
           </span>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboardIcon },
@@ -31,11 +32,11 @@ export default function Sidebar({
   return (
     <>
       {/* Mobile top bar */}
-      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 md:hidden">
-        <span className="text-lg font-semibold text-gray-900">Email Campaign</span>
+      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 md:hidden dark:border-zinc-700 dark:bg-zinc-800">
+        <span className="text-lg font-semibold text-gray-900 dark:text-zinc-100">Email Campaign</span>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
-          className="rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+          className="rounded-md p-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-slate-100"
         >
           {mobileOpen ? <XIcon /> : <MenuIcon />}
         </button>
@@ -51,18 +52,18 @@ export default function Sidebar({
 
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-gray-200 bg-white transition-transform md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex h-screen w-64 flex-col border-r border-gray-200 bg-white transition-transform md:static md:translate-x-0 dark:border-zinc-700 dark:bg-zinc-800 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Logo / App name */}
-        <div className="flex h-14 items-center border-b border-gray-200 px-5">
+        <div className="flex h-14 shrink-0 items-center border-b border-gray-200 px-5 dark:border-zinc-700">
           <img
             src="/giorgi.png"
             alt="Logo"
             className="h-8 w-8 rounded-full object-cover"
           />
-          <span className="ml-2 text-lg font-semibold text-gray-900">
+          <span className="ml-2 text-lg font-semibold text-gray-900 dark:text-zinc-100">
             Email Campaign
           </span>
         </div>
@@ -82,14 +83,14 @@ export default function Sidebar({
                 onClick={() => setMobileOpen(false)}
                 className={`flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-blue-50 text-blue-700"
-                    : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400"
+                    : "text-gray-700 hover:bg-gray-100 hover:text-gray-900 dark:text-zinc-300 dark:hover:bg-zinc-700 dark:hover:text-slate-100"
                 }`}
               >
                 <item.icon />
                 <span className="flex-1">{item.label}</span>
                 {item.showBadge && inboxUnreadCount > 0 && (
-                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-xs font-medium text-white bg-blue-600 rounded-full">
+                  <span className="inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-xs font-medium text-white bg-emerald-600 rounded-full">
                     {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
                   </span>
                 )}
@@ -99,15 +100,18 @@ export default function Sidebar({
         </nav>
 
         {/* Logout */}
-        <div className="border-t border-gray-200 px-3 py-4">
-          <button
+        <div className="shrink-0 border-t border-gray-200 px-3 py-4 dark:border-zinc-700">
+          <Button
+            variant="ghost"
+            fullWidth
             onClick={handleLogout}
-            disabled={loggingOut}
-            className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900 disabled:opacity-50"
+            isLoading={loggingOut}
+            loadingText="Logging out..."
+            leftIcon={!loggingOut ? <LogOutIcon /> : undefined}
+            className="justify-start"
           >
-            <LogOutIcon />
-            {loggingOut ? "Logging out..." : "Logout"}
-          </button>
+            Logout
+          </Button>
         </div>
       </aside>
     </>

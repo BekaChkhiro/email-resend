@@ -22,13 +22,13 @@ type CampaignAnalyticsProps = {
 };
 
 const statusStyles: Record<string, string> = {
-  pending: "bg-gray-100 text-gray-700",
-  sent: "bg-blue-100 text-blue-700",
-  delivered: "bg-indigo-100 text-indigo-700",
-  opened: "bg-green-100 text-green-700",
-  clicked: "bg-emerald-100 text-emerald-700",
-  bounced: "bg-red-100 text-red-700",
-  failed: "bg-red-100 text-red-700",
+  pending: "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
+  sent: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  delivered: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  opened: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+  clicked: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400",
+  bounced: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  failed: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
 
 function formatDate(dateStr: string | null) {
@@ -61,29 +61,29 @@ export default function CampaignAnalytics({
   const bounceRate = sent > 0 ? ((bounced / sent) * 100).toFixed(1) : "0.0";
 
   const metrics = [
-    { label: "Total Emails", value: total, color: "text-gray-900" },
-    { label: "Sent", value: sent, color: "text-blue-600" },
+    { label: "Total Emails", value: total, color: "text-gray-900 dark:text-white" },
+    { label: "Sent", value: sent, color: "text-emerald-600 dark:text-emerald-400" },
     {
       label: "Delivered",
       value: `${delivered} (${deliverRate}%)`,
-      color: "text-indigo-600",
+      color: "text-emerald-600 dark:text-emerald-400",
     },
     {
       label: "Opened",
       value: `${opened} (${openRate}%)`,
-      color: "text-green-600",
+      color: "text-green-600 dark:text-green-400",
     },
     {
       label: "Clicked",
       value: `${clicked} (${clickRate}%)`,
-      color: "text-emerald-600",
+      color: "text-emerald-600 dark:text-emerald-400",
     },
     {
       label: "Bounced",
       value: `${bounced} (${bounceRate}%)`,
-      color: "text-red-600",
+      color: "text-red-600 dark:text-red-400",
     },
-    { label: "Failed", value: failed, color: "text-red-600" },
+    { label: "Failed", value: failed, color: "text-red-600 dark:text-red-400" },
   ];
 
   const filteredEmails =
@@ -96,14 +96,14 @@ export default function CampaignAnalytics({
   return (
     <div className="mt-6 space-y-6">
       {/* Metrics Cards */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">
+      <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
           Campaign Analytics
         </h2>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
           {metrics.map((m) => (
-            <div key={m.label} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-              <p className="text-xs font-medium text-gray-500">{m.label}</p>
+            <div key={m.label} className="rounded-lg border border-gray-100 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{m.label}</p>
               <p className={`mt-1 text-xl font-bold ${m.color}`}>{m.value}</p>
             </div>
           ))}
@@ -111,9 +111,9 @@ export default function CampaignAnalytics({
       </div>
 
       {/* Per-Email Details Table */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className="rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
             Email Details ({filteredEmails.length})
           </h2>
           <div className="flex gap-1">
@@ -123,8 +123,8 @@ export default function CampaignAnalytics({
                 onClick={() => setStatusFilter(s)}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                   statusFilter === s
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    ? "bg-emerald-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
                 }`}
               >
                 {s === "all" ? "All" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -134,74 +134,74 @@ export default function CampaignAnalytics({
         </div>
 
         {filteredEmails.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">
+          <p className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
             No emails match the selected filter.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900">
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Contact
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Status
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Sent
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Opened
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Clicked
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Domain
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Template
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">
                     Error
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {filteredEmails.map((email) => (
-                  <tr key={email.id} className="hover:bg-gray-50">
+                  <tr key={email.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-gray-900">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
                         {email.contactName}
                       </div>
-                      <div className="text-xs text-gray-500">
+                      <div className="text-xs text-gray-500 dark:text-gray-400">
                         {email.contactEmail}
                       </div>
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[email.status] ?? "bg-gray-100 text-gray-700"}`}
+                        className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[email.status] ?? "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"}`}
                       >
                         {email.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500" suppressHydrationWarning>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400" suppressHydrationWarning>
                       {formatDate(email.sentAt)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500" suppressHydrationWarning>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400" suppressHydrationWarning>
                       {formatDate(email.openedAt)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500" suppressHydrationWarning>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400" suppressHydrationWarning>
                       {formatDate(email.clickedAt)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
                       {email.domainFrom}
                     </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
                       {email.templateName}
                     </td>
-                    <td className="px-4 py-3 text-xs text-red-600">
+                    <td className="px-4 py-3 text-xs text-red-600 dark:text-red-400">
                       {email.errorMessage ?? "—"}
                     </td>
                   </tr>

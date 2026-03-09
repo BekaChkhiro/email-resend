@@ -2,6 +2,7 @@
 
 import { useState, useRef, useTransition } from "react";
 import { createTemplate, updateTemplate, deleteTemplate } from "./actions";
+import { Button, useConfirmDialog } from "@/components/ui";
 
 type Template = {
   id: string;
@@ -50,6 +51,7 @@ export default function TemplateEditor({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { confirm, Dialog } = useConfirmDialog();
 
   function insertVariable(variable: string) {
     const textarea = textareaRef.current;
@@ -101,8 +103,14 @@ export default function TemplateEditor({
     });
   }
 
-  function handleDelete(templateId: string) {
-    if (!confirm("Are you sure you want to delete this template?")) return;
+  async function handleDelete(templateId: string) {
+    const confirmed = await confirm({
+      title: "Delete Template",
+      message: "Are you sure you want to delete this template? This action cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!confirmed) return;
     setMessage(null);
     startTransition(async () => {
       const result = await deleteTemplate(templateId);
@@ -119,19 +127,19 @@ export default function TemplateEditor({
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           Templates ({initialTemplates.length})
         </h2>
         {!readOnly && (
-          <button
+          <Button
+            size="sm"
             onClick={() => {
               setEditingTemplate(null);
               setShowForm(true);
             }}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           >
             + Add Template
-          </button>
+          </Button>
         )}
       </div>
 
@@ -139,8 +147,8 @@ export default function TemplateEditor({
         <div
           className={`mb-4 rounded-md p-3 text-sm ${
             message.type === "success"
-              ? "bg-green-50 text-green-700"
-              : "bg-red-50 text-red-700"
+              ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
           }`}
         >
           {message.text}
@@ -148,8 +156,8 @@ export default function TemplateEditor({
       )}
 
       {initialTemplates.length === 0 && !showForm && (
-        <div className="rounded-lg border border-gray-200 bg-white py-8 text-center">
-          <p className="text-sm text-gray-500">
+        <div className="rounded-lg border border-gray-200 bg-white py-8 text-center dark:border-gray-700 dark:bg-gray-800">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             No templates yet.{" "}
             {!readOnly && "Add a template to get started."}
           </p>
@@ -160,64 +168,67 @@ export default function TemplateEditor({
         {initialTemplates.map((template) => (
           <div
             key={template.id}
-            className="rounded-lg border border-gray-200 bg-white p-5"
+            className="rounded-lg border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800"
           >
             <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-900">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
                 {template.versionName}
               </h3>
               <div className="flex gap-2">
-                <button
+                <Button
+                  variant="secondary"
+                  size="xs"
                   onClick={() =>
                     setPreviewId(
                       previewId === template.id ? null : template.id
                     )
                   }
-                  className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
                 >
                   {previewId === template.id ? "Hide Preview" : "Preview"}
-                </button>
+                </Button>
                 {!readOnly && (
                   <>
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="xs"
                       onClick={() => {
                         setShowForm(false);
                         setEditingTemplate(template);
                       }}
-                      className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50"
                     >
                       Edit
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="danger"
+                      size="xs"
                       onClick={() => handleDelete(template.id)}
                       disabled={isPending}
-                      className="rounded border border-gray-300 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                     >
                       Delete
-                    </button>
+                    </Button>
                   </>
                 )}
               </div>
             </div>
 
-            <p className="text-sm text-gray-500 line-clamp-2">
+            <p className="text-sm text-gray-500 line-clamp-2 dark:text-gray-400">
               {template.body}
             </p>
 
             {previewId === template.id && (
-              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3">
-                <p className="mb-1 text-xs font-medium text-gray-500">
+              <div className="mt-3 rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-700">
+                <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">
                   Preview with sample data
                 </p>
                 {emailFormat === "html" ? (
                   <div
-                    className="prose prose-sm max-w-none text-sm"
+                    className="prose prose-sm max-w-none text-sm email-preview-content"
                     dangerouslySetInnerHTML={{
                       __html: renderPreview(template.body),
                     }}
                   />
                 ) : (
-                  <pre className="text-sm whitespace-pre-wrap">
+                  <pre className="text-sm whitespace-pre-wrap text-gray-900 dark:text-white">
                     {renderPreview(template.body)}
                   </pre>
                 )}
@@ -230,8 +241,8 @@ export default function TemplateEditor({
       {/* Add / Edit Form Modal */}
       {isFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold text-gray-900">
+          <div className="mx-4 w-full max-w-lg rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
+            <h3 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
               {editingTemplate ? "Edit Template" : "Add Template"}
             </h3>
 
@@ -247,7 +258,7 @@ export default function TemplateEditor({
               }}
             >
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Version Name
                 </label>
                 <input
@@ -255,12 +266,12 @@ export default function TemplateEditor({
                   type="text"
                   required
                   defaultValue={editingTemplate?.versionName ?? ""}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                 />
               </div>
 
               <div className="mb-2">
-                <span className="text-xs font-medium text-gray-500">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
                   Insert variable:{" "}
                 </span>
                 {VARIABLES.map((v) => (
@@ -268,7 +279,7 @@ export default function TemplateEditor({
                     key={v.value}
                     type="button"
                     onClick={() => insertVariable(v.value)}
-                    className="mr-1.5 rounded bg-blue-50 px-2 py-0.5 text-xs font-mono text-blue-700 hover:bg-blue-100"
+                    className="mr-1.5 rounded bg-emerald-50 px-2 py-0.5 text-xs font-mono text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50"
                   >
                     {v.label}
                   </button>
@@ -276,7 +287,7 @@ export default function TemplateEditor({
               </div>
 
               <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Body
                 </label>
                 <textarea
@@ -286,37 +297,35 @@ export default function TemplateEditor({
                   rows={10}
                   defaultValue={editingTemplate?.body ?? ""}
                   placeholder="Write your email body here. Use {{firstName}}, {{companyName}}, {{email}} for personalization."
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-sm text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
                 />
               </div>
 
               <div className="flex justify-end gap-3">
-                <button
+                <Button
+                  variant="secondary"
                   type="button"
                   onClick={() => {
                     setShowForm(false);
                     setEditingTemplate(null);
                   }}
-                  className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
                   type="submit"
-                  disabled={isPending}
-                  className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                  isLoading={isPending}
+                  loadingText="Saving..."
                 >
-                  {isPending
-                    ? "Saving..."
-                    : editingTemplate
-                      ? "Update Template"
-                      : "Create Template"}
-                </button>
+                  {editingTemplate ? "Update Template" : "Create Template"}
+                </Button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <Dialog />
     </div>
   );
 }

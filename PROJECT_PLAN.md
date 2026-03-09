@@ -6,7 +6,7 @@
 - **Target Users:** Campaign Manager (single admin user)
 - **Project Type:** Full-Stack Web App
 - **Created:** 2026-03-04
-- **Last Updated:** 2026-03-04
+- **Last Updated:** 2026-03-09
 - **AI Provider:** OpenAI (ChatGPT) API
 - **Status:** In Progress
 - **Plugin Version:** 1.1.1
@@ -288,6 +288,689 @@
   - Configure PostgreSQL (Vercel Postgres or external like Neon/Supabase)
   - Setup Resend API keys and webhook URLs
   - Deploy and verify production functionality
+
+---
+
+---
+
+## Phase 6: MCP Server — Core Setup
+
+#### T6.1: Initialize MCP Server Project Structure
+- [x] **Status**: DONE ✅
+- **Complexity**: Medium
+- **Dependencies**: T1.2
+- **Description**:
+  - Create `mcp-server/` directory
+  - Initialize package.json with dependencies (@modelcontextprotocol/sdk, zod, dotenv)
+  - Setup tsconfig.json for ES2022/NodeNext
+  - Create src/ folder structure (tools/, utils/, transports/, schemas/, resources/)
+
+#### T6.2: Configure Prisma Client Integration
+- [x] **Status**: DONE ✅
+- **Complexity**: Low
+- **Dependencies**: T6.1
+- **Description**:
+  - Create src/utils/db.ts
+  - Import existing Prisma client from parent project
+  - Setup connection pooling
+  - Add connection error handling
+
+#### T6.3: Implement Base MCP Server
+- [x] **Status**: DONE ✅
+- **Complexity**: High
+- **Dependencies**: T6.2
+- **Description**:
+  - Create src/server.ts with MCP Server class
+  - Register tool handlers
+  - Setup capability negotiation
+  - Implement server info endpoint
+
+#### T6.4: Implement stdio Transport
+- [x] **Status**: DONE ✅
+- **Complexity**: Medium
+- **Dependencies**: T6.3
+- **Description**:
+  - Create src/transports/stdio.ts
+  - Handle stdin/stdout streams
+  - Implement JSON-RPC message parsing
+  - Add graceful shutdown handling
+
+#### T6.5: Setup Error Handling Utilities
+- [ ] **Status**: IN_PROGRESS 🔄
+- **Complexity**: Medium
+- **Dependencies**: T6.1
+- **Description**:
+  - Create src/utils/errors.ts
+  - Define McpErrorCode enum
+  - Implement ToolError class
+  - Create error response formatter
+
+#### T6.6: Create Entry Point with Mode Selection
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T6.4
+- **Description**:
+  - Create src/index.ts
+  - Parse CLI arguments (--stdio, --http)
+  - Initialize appropriate transport
+  - Add environment variable loading
+
+---
+
+## Phase 7: MCP Server — Contact Tools
+
+#### T7.1: Create Contacts Zod Schemas
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T6.5
+- **Description**:
+  - Create src/schemas/contacts.ts
+  - Define ContactCreateSchema with all fields
+  - Define ContactUpdateSchema (partial)
+  - Define ContactListFiltersSchema
+  - Add validation error messages
+
+#### T7.2: Implement contacts_list Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T7.1
+- **Description**:
+  - Create src/tools/contacts.ts
+  - Implement search (email, name, company)
+  - Add country and industry filters
+  - Implement pagination (limit, offset)
+  - Return total count and hasMore flag
+
+#### T7.3: Implement contacts_get Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T7.2
+- **Description**:
+  - Get contact by ID
+  - Include related campaign emails count
+  - Return null if not found
+
+#### T7.4: Implement contacts_create Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T7.1
+- **Description**:
+  - Validate input with Zod schema
+  - Check for duplicate email
+  - Create contact in database
+  - Return created contact or error
+
+#### T7.5: Implement contacts_update Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T7.4
+- **Description**:
+  - Validate partial input
+  - Check contact exists
+  - Update only provided fields
+  - Return updated contact
+
+#### T7.6: Implement contacts_delete Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T7.3
+- **Description**:
+  - Check contact exists
+  - Handle cascade delete considerations
+  - Return success/failure
+
+#### T7.7: Implement contacts_bulk_create Tool
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T7.4
+- **Description**:
+  - Accept array of contacts (max 100)
+  - Validate each contact
+  - Skip duplicates if flag set
+  - Use transaction for batch insert
+  - Return created/skipped counts and errors
+
+---
+
+## Phase 8: MCP Server — Campaign Tools
+
+#### T8.1: Create Campaigns Zod Schemas
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T6.5
+- **Description**:
+  - Create src/schemas/campaigns.ts
+  - Define CampaignCreateSchema
+  - Define CampaignUpdateSchema
+  - Add schedule validation (hours, days, timezone)
+
+#### T8.2: Implement campaigns_list Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T8.1
+- **Description**:
+  - Create src/tools/campaigns.ts
+  - Filter by status (draft, sending, completed, paused)
+  - Implement pagination
+  - Include basic stats (email counts)
+
+#### T8.3: Implement campaigns_get Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T8.2
+- **Description**:
+  - Get campaign by ID
+  - Include templates
+  - Calculate stats (sent, delivered, opened, clicked, bounced)
+  - Return detailed campaign object
+
+#### T8.4: Implement campaigns_create Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T8.1
+- **Description**:
+  - Validate input
+  - Set default status to 'draft'
+  - Validate timezone if provided
+  - Validate sendDays array
+  - Return created campaign
+
+#### T8.5: Implement campaigns_update Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T8.4
+- **Description**:
+  - Validate partial input
+  - Prevent updating completed campaigns
+  - Handle status transitions
+  - Return updated campaign
+
+#### T8.6: Implement campaigns_delete Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T8.3
+- **Description**:
+  - Check campaign exists
+  - Prevent deleting active campaigns
+  - Cascade delete templates and emails
+  - Return success
+
+#### T8.7: Implement campaigns_add_contacts Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T8.3
+- **Description**:
+  - Validate campaign exists and is draft
+  - Validate all contact IDs exist
+  - Add to selectedContactIds array
+  - Prevent duplicates
+  - Return total contacts count
+
+#### T8.8: Implement campaigns_remove_contacts Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T8.7
+- **Description**:
+  - Remove contact IDs from array
+  - Return remaining contacts count
+
+#### T8.9: Implement campaigns_prepare Tool
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T8.7
+- **Description**:
+  - Validate campaign has contacts
+  - Validate campaign has templates
+  - Get active domains
+  - Create CampaignEmail records
+  - Round-robin domain and template assignment
+  - Return emails created count
+
+#### T8.10: Implement campaigns_start Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T8.9
+- **Description**:
+  - Validate campaign is prepared
+  - Check pending emails exist
+  - Set status to 'sending'
+  - Set sentAt timestamp
+  - Return updated campaign
+
+#### T8.11: Implement campaigns_pause Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T8.10
+- **Description**:
+  - Validate campaign is sending
+  - Set status to 'paused'
+  - Return updated campaign
+
+#### T8.12: Implement campaigns_stats Tool
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T8.3
+- **Description**:
+  - Calculate overview stats
+  - Calculate percentage rates
+  - Group stats by domain
+  - Generate timeline data
+  - Return comprehensive stats object
+
+---
+
+## Phase 9: MCP Server — Template & Domain Tools
+
+#### T9.1: Implement templates_list Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T6.3
+- **Description**:
+  - Create src/tools/templates.ts
+  - Get templates by campaign ID
+  - Order by sortOrder
+  - Return template array
+
+#### T9.2: Implement templates_create Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T9.1
+- **Description**:
+  - Validate campaign exists and is draft
+  - Auto-assign sortOrder if not provided
+  - Return created template
+
+#### T9.3: Implement templates_update Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T9.2
+- **Description**:
+  - Validate template exists
+  - Update provided fields
+  - Return updated template
+
+#### T9.4: Implement templates_delete Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T9.1
+- **Description**:
+  - Validate template exists
+  - Delete template
+  - Return success
+
+#### T9.5: Implement domains_list Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T6.3
+- **Description**:
+  - Create src/tools/domains.ts
+  - Filter by isActive and warmupEnabled
+  - Return domain array
+
+#### T9.6: Implement domains_get Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T9.5
+- **Description**:
+  - Get domain by ID
+  - Calculate stats (totalEmailsSent, deliveryRate, bounceRate)
+  - Return domain with stats
+
+#### T9.7: Implement domains_add Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T9.5
+- **Description**:
+  - Validate domain format
+  - Check for duplicate domain
+  - Validate fromEmail matches domain
+  - Return created domain
+
+#### T9.8: Implement domains_update Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T9.7
+- **Description**:
+  - Update fromName and/or fromEmail
+  - Return updated domain
+
+#### T9.9: Implement domains_delete Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T9.6
+- **Description**:
+  - Check domain not in use by active campaigns
+  - Delete domain
+  - Return success
+
+#### T9.10: Implement domains_toggle_active Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T9.5
+- **Description**:
+  - Toggle isActive flag
+  - Return updated domain
+
+---
+
+## Phase 10: MCP Server — Warmup Tools
+
+#### T10.1: Implement warmup_start Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T9.6
+- **Description**:
+  - Create src/tools/warmup.ts
+  - Set warmupEnabled = true
+  - Set warmupStartedAt to now
+  - Reset warmupDay to 1
+  - Return updated domain
+
+#### T10.2: Implement warmup_stop Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T10.1
+- **Description**:
+  - Set warmupEnabled = false
+  - Return updated domain
+
+#### T10.3: Implement warmup_reset Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T10.1
+- **Description**:
+  - Reset all warmup fields
+  - Set warmupDay = 0
+  - Clear timestamps
+  - Return updated domain
+
+#### T10.4: Implement warmup_status Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T10.1
+- **Description**:
+  - Get domain warmup state
+  - Calculate dailyLimit based on warmupDay
+  - Count totalSent from WarmupEmail
+  - Return detailed status object
+
+#### T10.5: Implement warmup_overview Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T10.4
+- **Description**:
+  - Get all domains with warmup data
+  - Calculate progress percentage
+  - Count totalActive and totalCompleted
+  - Return overview object
+
+---
+
+## Phase 11: MCP Server — Inbox Tools
+
+#### T11.1: Implement inbox_conversations Tool
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T6.3
+- **Description**:
+  - Create src/tools/inbox.ts
+  - Group messages by contact and campaign
+  - Get last message preview
+  - Count unread and total messages
+  - Implement pagination and status filter
+
+#### T11.2: Implement inbox_messages Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T11.1
+- **Description**:
+  - Get messages for contact
+  - Optionally filter by campaign
+  - Order by receivedAt
+  - Include attachments
+
+#### T11.3: Implement inbox_reply Tool
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T11.2
+- **Description**:
+  - Validate contact exists
+  - Get domain for reply
+  - Send email via Resend API
+  - Create InboxMessage record
+  - Set direction to 'outbound'
+
+#### T11.4: Implement inbox_mark_read Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T11.1
+- **Description**:
+  - Update messages status to 'read'
+  - Filter by contact and optional campaign
+  - Return count of marked messages
+
+#### T11.5: Implement inbox_mark_unread Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T11.4
+- **Description**:
+  - Update single message status to 'unread'
+  - Return success
+
+#### T11.6: Implement inbox_archive Tool
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T11.4
+- **Description**:
+  - Update messages status to 'archived'
+  - Return archived count
+
+#### T11.7: Implement inbox_stats Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T11.1
+- **Description**:
+  - Count total messages
+  - Count by status
+  - Count today's received
+  - Return stats object
+
+---
+
+## Phase 12: MCP Server — Analytics Tools
+
+#### T12.1: Implement analytics_overview Tool
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T8.12
+- **Description**:
+  - Create src/tools/analytics.ts
+  - Calculate contacts stats (total, added, unsubscribed)
+  - Calculate campaigns stats (total, active, completed, draft)
+  - Calculate emails stats
+  - Support period filter (7d, 30d, 90d, all)
+
+#### T12.2: Implement analytics_campaign_comparison Tool
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T8.12
+- **Description**:
+  - Accept array of campaign IDs
+  - Calculate rates for each
+  - Return comparison data
+
+---
+
+## Phase 13: MCP Server — HTTP Transport & Auth
+
+#### T13.1: Implement HTTP/SSE Transport
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T6.4
+- **Description**:
+  - Create src/transports/http.ts
+  - Setup HTTP server
+  - Implement SSE for streaming
+  - Handle CORS
+  - Parse JSON-RPC requests
+
+#### T13.2: Implement API Key Authentication
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T13.1
+- **Description**:
+  - Create src/auth.ts
+  - Validate X-API-Key header
+  - Support Bearer token format
+  - Reject unauthorized requests
+
+#### T13.3: Implement Rate Limiting
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T13.2
+- **Description**:
+  - Track requests per API key
+  - Implement sliding window
+  - Return 429 when exceeded
+  - Add rate limit headers
+
+---
+
+## Phase 14: MCP Server — Resources
+
+#### T14.1: Implement Resource Handler
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T6.3
+- **Description**:
+  - Create src/resources/index.ts
+  - Register resource URIs
+  - Implement resource read handler
+
+#### T14.2: Implement contacts/all Resource
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T14.1
+- **Description**:
+  - Return all contacts as JSON
+  - Limit to 1000 for performance
+
+#### T14.3: Implement campaigns/active Resource
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T14.1
+- **Description**:
+  - Return campaigns with status 'sending'
+  - Include basic stats
+
+#### T14.4: Implement domains/warmup Resource
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T14.1
+- **Description**:
+  - Return domains with warmupEnabled = true
+
+#### T14.5: Implement inbox/unread Resource
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T14.1
+- **Description**:
+  - Return messages with status 'unread'
+  - Limit to 100
+
+#### T14.6: Implement analytics/today Resource
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T14.1
+- **Description**:
+  - Return today's email statistics
+
+---
+
+## Phase 15: MCP Server — Testing & Documentation
+
+#### T15.1: Setup Jest Testing Framework
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T6.6
+- **Description**:
+  - Add jest and @types/jest
+  - Configure jest.config.js
+  - Setup test database
+  - Create test utilities
+
+#### T15.2: Write Unit Tests for Contact Tools
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T15.1, T7.7
+- **Description**:
+  - Test contacts_list with filters
+  - Test contacts_create validation
+  - Test contacts_bulk_create
+  - Test error cases
+
+#### T15.3: Write Unit Tests for Campaign Tools
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T15.1, T8.12
+- **Description**:
+  - Test campaign lifecycle
+  - Test campaigns_prepare
+  - Test campaigns_stats calculations
+
+#### T15.4: Write Integration Tests
+- [ ] **Status**: TODO
+- **Complexity**: High
+- **Dependencies**: T15.2, T15.3
+- **Description**:
+  - Test full campaign flow
+  - Test MCP protocol compliance
+  - Test HTTP transport
+  - Test authentication
+
+#### T15.5: Create README.md Documentation
+- [ ] **Status**: TODO
+- **Complexity**: Medium
+- **Dependencies**: T14.6
+- **Description**:
+  - Write installation guide
+  - Document all tools with examples
+  - Add Claude Desktop/Code config examples
+  - Add HTTP API examples
+
+#### T15.6: Create Usage Examples
+- [ ] **Status**: TODO
+- **Complexity**: Low
+- **Dependencies**: T15.5
+- **Description**:
+  - Create examples/ directory
+  - Add contact management example
+  - Add campaign flow example
+  - Add inbox management example
+
+---
+
+## Progress Summary
+
+| Phase | Tasks | Completed | Progress |
+|-------|-------|-----------|----------|
+| Phase 1: Foundation & Setup | 4 | 4 | 100% |
+| Phase 2: Domain & Contact Management | 3 | 3 | 100% |
+| Phase 3: Campaign System | 5 | 5 | 100% |
+| Phase 3.5: AI Email Generation | 6 | 6 | 100% |
+| Phase 4: Tracking & Analytics | 3 | 3 | 100% |
+| Phase 5: Testing & Deployment | 2 | 0 | 0% |
+| **Phase 6: MCP Core Setup** | 6 | 4 | 67% |
+| **Phase 7: MCP Contact Tools** | 7 | 0 | 0% |
+| **Phase 8: MCP Campaign Tools** | 12 | 0 | 0% |
+| **Phase 9: MCP Template & Domain Tools** | 10 | 0 | 0% |
+| **Phase 10: MCP Warmup Tools** | 5 | 0 | 0% |
+| **Phase 11: MCP Inbox Tools** | 7 | 0 | 0% |
+| **Phase 12: MCP Analytics Tools** | 2 | 0 | 0% |
+| **Phase 13: MCP HTTP & Auth** | 3 | 0 | 0% |
+| **Phase 14: MCP Resources** | 6 | 0 | 0% |
+| **Phase 15: MCP Testing & Docs** | 6 | 0 | 0% |
+| **Total** | **87** | **25** | **29%** |
 
 ---
 

@@ -27,6 +27,34 @@ function formatDate(dateStr: string) {
   }
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+const avatarColors = [
+  "bg-blue-500",
+  "bg-emerald-500",
+  "bg-violet-500",
+  "bg-orange-500",
+  "bg-pink-500",
+  "bg-cyan-500",
+  "bg-amber-500",
+  "bg-rose-500",
+];
+
+function getAvatarColor(name: string) {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return avatarColors[Math.abs(hash) % avatarColors.length];
+}
+
 export default function ConversationsList({
   conversations,
 }: {
@@ -40,10 +68,14 @@ export default function ConversationsList({
 
   if (conversations.length === 0) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white py-12 text-center">
-        <InboxIcon className="mx-auto h-12 w-12 text-gray-400" />
-        <p className="mt-2 text-sm text-gray-500">No messages yet.</p>
-        <p className="mt-1 text-xs text-gray-400">
+      <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-16 dark:border-zinc-700 dark:bg-zinc-800">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-zinc-700">
+          <InboxIcon className="h-7 w-7 text-gray-400 dark:text-zinc-500" />
+        </div>
+        <h3 className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
+          No messages yet
+        </h3>
+        <p className="mt-1 text-sm text-gray-500 dark:text-zinc-400">
           Replies to your campaign emails will appear here.
         </p>
       </div>
@@ -51,69 +83,94 @@ export default function ConversationsList({
   }
 
   return (
-    <div className="flex h-[calc(100vh-200px)] min-h-[500px] overflow-hidden rounded-lg border border-gray-200 bg-white">
+    <div className="flex h-[calc(100vh-180px)] min-h-[500px] overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-zinc-700 dark:bg-zinc-800">
       {/* Conversations sidebar */}
-      <div className="w-80 flex-shrink-0 border-r border-gray-200 overflow-y-auto">
-        {conversations.map((conversation) => (
-          <button
-            key={conversation.id}
-            onClick={() => setSelectedId(conversation.id)}
-            className={`w-full px-4 py-3 text-left border-b border-gray-100 hover:bg-gray-50 transition-colors ${
-              selectedId === conversation.id ? "bg-blue-50" : ""
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`text-sm truncate ${
-                      conversation.unreadCount > 0
-                        ? "font-semibold text-gray-900"
-                        : "font-medium text-gray-700"
-                    }`}
+      <div className="w-80 flex-shrink-0 overflow-y-auto border-r border-gray-200 dark:border-zinc-700">
+        <div className="sticky top-0 z-10 border-b border-gray-100 bg-gray-50/80 px-4 py-3 backdrop-blur-sm dark:border-zinc-700 dark:bg-zinc-800/80">
+          <p className="text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-zinc-400">
+            Conversations ({conversations.length})
+          </p>
+        </div>
+        <div className="divide-y divide-gray-100 dark:divide-zinc-700">
+          {conversations.map((conversation) => {
+            const isSelected = selectedId === conversation.id;
+            const hasUnread = conversation.unreadCount > 0;
+
+            return (
+              <button
+                key={conversation.id}
+                onClick={() => setSelectedId(conversation.id)}
+                className={`group w-full px-4 py-3 text-left transition-colors ${
+                  isSelected
+                    ? "bg-emerald-50 dark:bg-emerald-500/10"
+                    : "hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                }`}
+              >
+                <div className="flex gap-3">
+                  {/* Avatar */}
+                  <div
+                    className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full text-sm font-medium text-white ${getAvatarColor(
+                      conversation.contactName
+                    )}`}
                   >
-                    {conversation.contactName}
-                  </span>
-                  {conversation.unreadCount > 0 && (
-                    <span className="flex-shrink-0 inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 text-xs font-medium text-white bg-blue-600 rounded-full">
-                      {conversation.unreadCount}
-                    </span>
-                  )}
+                    {getInitials(conversation.contactName)}
+                  </div>
+
+                  {/* Content */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`truncate text-sm ${
+                          hasUnread
+                            ? "font-semibold text-gray-900 dark:text-white"
+                            : "font-medium text-gray-700 dark:text-zinc-300"
+                        }`}
+                      >
+                        {conversation.contactName}
+                      </span>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        {hasUnread && (
+                          <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-emerald-600 px-1.5 text-xs font-medium text-white">
+                            {conversation.unreadCount}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-400 dark:text-zinc-500">
+                          {formatDate(conversation.lastMessage.receivedAt)}
+                        </span>
+                      </div>
+                    </div>
+
+                    {conversation.campaignName && (
+                      <p className="mt-0.5 truncate text-xs text-emerald-600 dark:text-emerald-400">
+                        {conversation.campaignName}
+                      </p>
+                    )}
+
+                    <p
+                      className={`mt-1 truncate text-sm ${
+                        hasUnread
+                          ? "font-medium text-gray-900 dark:text-white"
+                          : "text-gray-600 dark:text-zinc-400"
+                      }`}
+                    >
+                      {conversation.lastMessage.subject}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-gray-500 dark:text-zinc-500">
+                      {conversation.lastMessage.direction === "outbound" && (
+                        <span className="text-gray-400 dark:text-zinc-500">You: </span>
+                      )}
+                      {conversation.lastMessage.preview}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 truncate mt-0.5">
-                  {conversation.contactEmail}
-                </p>
-                {conversation.campaignName && (
-                  <p className="text-xs text-blue-600 truncate mt-0.5">
-                    {conversation.campaignName}
-                  </p>
-                )}
-              </div>
-              <span className="text-xs text-gray-400 flex-shrink-0">
-                {formatDate(conversation.lastMessage.receivedAt)}
-              </span>
-            </div>
-            <p
-              className={`text-sm mt-1 truncate ${
-                conversation.unreadCount > 0
-                  ? "font-medium text-gray-900"
-                  : "text-gray-600"
-              }`}
-            >
-              {conversation.lastMessage.subject}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5 truncate">
-              {conversation.lastMessage.direction === "outbound" && (
-                <span className="text-gray-400">You: </span>
-              )}
-              {conversation.lastMessage.preview}
-            </p>
-          </button>
-        ))}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Thread view */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex min-w-0 flex-1 flex-col">
         {selectedConversation ? (
           <ConversationThread
             key={selectedConversation.id}
@@ -124,8 +181,12 @@ export default function ConversationsList({
             campaignName={selectedConversation.campaignName}
           />
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
-            Select a conversation
+          <div className="flex flex-1 flex-col items-center justify-center text-gray-500 dark:text-zinc-400">
+            <MailOpenIcon className="h-12 w-12 text-gray-300 dark:text-zinc-600" />
+            <p className="mt-3 text-sm font-medium">Select a conversation</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-zinc-500">
+              Choose from the list on the left
+            </p>
           </div>
         )}
       </div>
@@ -135,18 +196,16 @@ export default function ConversationsList({
 
 function InboxIcon({ className }: { className?: string }) {
   return (
-    <svg
-      className={className}
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth={1.5}
-        d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-      />
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 13.5h3.86a2.25 2.25 0 012.012 1.244l.256.512a2.25 2.25 0 002.013 1.244h3.218a2.25 2.25 0 002.013-1.244l.256-.512a2.25 2.25 0 012.013-1.244h3.859m-19.5.338V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18v-4.162c0-.224-.034-.447-.1-.661L19.24 5.338a2.25 2.25 0 00-2.15-1.588H6.911a2.25 2.25 0 00-2.15 1.588L2.35 13.177a2.25 2.25 0 00-.1.661z" />
+    </svg>
+  );
+}
+
+function MailOpenIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 9v.906a2.25 2.25 0 01-1.183 1.981l-6.478 3.488M2.25 9v.906a2.25 2.25 0 001.183 1.981l6.478 3.488m8.839 2.51l-4.66-2.51m0 0l-1.023-.55a2.25 2.25 0 00-2.134 0l-1.022.55m0 0l-4.661 2.51m16.5 1.615a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V8.844a2.25 2.25 0 011.183-1.98l7.5-4.04a2.25 2.25 0 012.134 0l7.5 4.04a2.25 2.25 0 011.183 1.98V19.5z" />
     </svg>
   );
 }

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { updateAiPrompt } from "./actions";
+import { Button } from "@/components/ui";
 
 const AVAILABLE_FIELDS = [
   { label: "First Name", value: "firstName" },
@@ -53,13 +54,13 @@ export default function AiPromptEditor({
   }
 
   return (
-    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
+    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           AI Email Generation
         </h2>
         {prompt.trim() ? (
-          <span className="inline-flex rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700">
+          <span className="inline-flex rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
             AI Enabled
           </span>
         ) : (
@@ -67,7 +68,7 @@ export default function AiPromptEditor({
         )}
       </div>
 
-      <p className="mt-1 text-sm text-gray-500">
+      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
         Write instructions for ChatGPT to generate a unique email for each
         contact. Leave empty to use templates instead.
       </p>
@@ -76,8 +77,8 @@ export default function AiPromptEditor({
         <div
           className={`mt-3 rounded-md px-3 py-2 text-sm ${
             message.type === "success"
-              ? "bg-green-50 text-green-700"
-              : "bg-red-50 text-red-700"
+              ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
           }`}
         >
           {message.text}
@@ -87,7 +88,7 @@ export default function AiPromptEditor({
       <div className="mt-4">
         <label
           htmlFor="ai-prompt"
-          className="block text-sm font-medium text-gray-700"
+          className="block text-sm font-medium text-gray-700 dark:text-gray-300"
         >
           AI Prompt / Instructions
         </label>
@@ -98,7 +99,7 @@ export default function AiPromptEditor({
           onChange={(e) => setPrompt(e.target.value)}
           disabled={readOnly}
           placeholder={`Example: Write a cold outreach email for {{companyName}} about our SaaS product. Be personal, mention their industry ({{companyIndustry}}) and company size ({{companySize}}). Keep it under 150 words.`}
-          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+          className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 disabled:bg-gray-50 disabled:text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-500 dark:disabled:bg-gray-900 dark:disabled:text-gray-500"
         />
         <p className="mt-1 text-xs text-gray-400">
           The AI will receive each contact&apos;s data and generate a unique
@@ -107,7 +108,7 @@ export default function AiPromptEditor({
       </div>
 
       <div className="mt-4">
-        <p className="text-sm font-medium text-gray-700">
+        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
           Available Contact Fields
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -121,7 +122,7 @@ export default function AiPromptEditor({
                   setPrompt((prev) => prev + `{{${field.value}}}`);
                 }
               }}
-              className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-default disabled:hover:border-gray-200 disabled:hover:bg-gray-50 disabled:hover:text-gray-600"
+              className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600 hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-default disabled:hover:border-gray-200 disabled:hover:bg-gray-50 disabled:hover:text-gray-600 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400 dark:hover:border-emerald-500 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 dark:disabled:hover:border-gray-600 dark:disabled:hover:bg-gray-700 dark:disabled:hover:text-gray-400"
             >
               {`{{${field.label}}}`}
             </button>
@@ -131,14 +132,15 @@ export default function AiPromptEditor({
 
       {!readOnly && (
         <div className="mt-4 flex items-center justify-end gap-3">
-          <button
+          <Button
             type="button"
             onClick={handleSave}
-            disabled={isPending || !hasChanges}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={!hasChanges}
+            isLoading={isPending}
+            loadingText="Saving..."
           >
-            {isPending ? "Saving..." : "Save Prompt"}
-          </button>
+            Save Prompt
+          </Button>
         </div>
       )}
     </div>

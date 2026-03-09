@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useTransition } from "react";
 import { updateSelectedContacts } from "./actions";
+import { Button } from "@/components/ui";
 
 interface Contact {
   id: string;
@@ -94,18 +95,18 @@ export default function ContactSelector({
   const unsubscribedCount = contacts.length - subscribedContacts.length;
 
   return (
-    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
+    <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
           Contact Selection
         </h2>
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-gray-500 dark:text-gray-400">
           {selectedIds.size} of {subscribedContacts.length} contacts selected
         </span>
       </div>
 
       {unsubscribedCount > 0 && (
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
           {unsubscribedCount} unsubscribed contact
           {unsubscribedCount !== 1 ? "s" : ""} automatically excluded.
         </p>
@@ -115,8 +116,8 @@ export default function ContactSelector({
         <div
           className={`mt-3 rounded-md px-3 py-2 text-sm ${
             message.type === "success"
-              ? "bg-green-50 text-green-700"
-              : "bg-red-50 text-red-700"
+              ? "bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              : "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400"
           }`}
         >
           {message.text}
@@ -130,49 +131,41 @@ export default function ContactSelector({
             placeholder="Search contacts..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-500"
           />
-          <button
-            type="button"
-            onClick={selectAll}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
+          <Button variant="secondary" type="button" onClick={selectAll}>
             Select All
-          </button>
-          <button
-            type="button"
-            onClick={deselectAll}
-            className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
+          </Button>
+          <Button variant="secondary" type="button" onClick={deselectAll}>
             Deselect All
-          </button>
+          </Button>
         </div>
       )}
 
-      <div className="mt-4 max-h-80 overflow-y-auto rounded-md border border-gray-200">
+      <div className="mt-4 max-h-80 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
         {filtered.length === 0 ? (
-          <p className="px-4 py-6 text-center text-sm text-gray-500">
+          <p className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
             {subscribedContacts.length === 0
               ? "No subscribed contacts available. Add contacts first."
               : "No contacts match your search."}
           </p>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50">
-              <tr className="text-left text-xs text-gray-500">
+            <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900">
+              <tr className="text-left text-xs text-gray-500 dark:text-gray-400">
                 {!readOnly && <th className="w-10 px-3 py-2" />}
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Email</th>
                 <th className="px-3 py-2">Company</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {filtered.map((contact) => (
                 <tr
                   key={contact.id}
                   onClick={() => toggleContact(contact.id)}
-                  className={`${!readOnly ? "cursor-pointer hover:bg-gray-50" : ""} ${
-                    selectedIds.has(contact.id) ? "bg-blue-50" : ""
+                  className={`${!readOnly ? "cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700" : ""} ${
+                    selectedIds.has(contact.id) ? "bg-emerald-50 dark:bg-emerald-900/30" : ""
                   }`}
                 >
                   {!readOnly && (
@@ -181,15 +174,15 @@ export default function ContactSelector({
                         type="checkbox"
                         checked={selectedIds.has(contact.id)}
                         onChange={() => toggleContact(contact.id)}
-                        className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-700"
                       />
                     </td>
                   )}
-                  <td className="px-3 py-2 text-gray-900">
+                  <td className="px-3 py-2 text-gray-900 dark:text-white">
                     {contact.firstName} {contact.lastName}
                   </td>
-                  <td className="px-3 py-2 text-gray-500">{contact.email}</td>
-                  <td className="px-3 py-2 text-gray-500">
+                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{contact.email}</td>
+                  <td className="px-3 py-2 text-gray-500 dark:text-gray-400">
                     {contact.companyName || "—"}
                   </td>
                 </tr>
@@ -201,14 +194,15 @@ export default function ContactSelector({
 
       {!readOnly && (
         <div className="mt-4 flex items-center justify-end gap-3">
-          <button
+          <Button
             type="button"
             onClick={handleSave}
-            disabled={isPending || !hasChanges}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={!hasChanges}
+            isLoading={isPending}
+            loadingText="Saving..."
           >
-            {isPending ? "Saving..." : "Save Selection"}
-          </button>
+            Save Selection
+          </Button>
         </div>
       )}
     </div>

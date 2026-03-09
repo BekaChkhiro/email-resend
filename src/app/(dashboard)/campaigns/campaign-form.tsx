@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { createCampaign, updateCampaign } from "./actions";
 import * as ct from "countries-and-timezones";
+import { Button } from "@/components/ui";
 
 type Campaign = {
   id: string;
@@ -179,16 +180,16 @@ function TimezoneSelect({
             setTimeout(() => inputRef.current?.focus(), 0);
           }
         }}
-        className="mt-1 flex w-full items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-left text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
       >
-        <span className={value ? "" : "text-gray-500"} title={displayValue}>{displayValue}</span>
+        <span className={value ? "" : "text-gray-500 dark:text-zinc-400"} title={displayValue}>{displayValue}</span>
         <svg className="h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 mt-1 w-full rounded-md border border-gray-200 bg-white shadow-lg">
+        <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg dark:border-zinc-600 dark:bg-zinc-800">
           <div className="p-2">
             <input
               ref={inputRef}
@@ -196,7 +197,7 @@ function TimezoneSelect({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search timezone..."
-              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:placeholder:text-zinc-500"
             />
           </div>
           <ul className="max-h-60 overflow-auto py-1">
@@ -208,8 +209,8 @@ function TimezoneSelect({
                   setIsOpen(false);
                   setSearch("");
                 }}
-                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 ${
-                  !value ? "bg-blue-50 text-blue-700" : "text-gray-500"
+                className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-zinc-700 ${
+                  !value ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "text-gray-500 dark:text-zinc-400"
                 }`}
               >
                 No scheduling (send anytime)
@@ -224,18 +225,18 @@ function TimezoneSelect({
                     setIsOpen(false);
                     setSearch("");
                   }}
-                  className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 ${
-                    value === tz.id ? "bg-blue-50 text-blue-700" : "text-gray-900"
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-gray-100 dark:hover:bg-zinc-700 ${
+                    value === tz.id ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400" : "text-gray-900 dark:text-white"
                   }`}
                 >
                   <span className="flex items-center justify-between gap-2">
                     <span className="truncate">
                       {tz.name.replace(/_/g, " ")}
                       {tz.country && (
-                        <span className="ml-1 text-gray-400">· {tz.country}</span>
+                        <span className="ml-1 text-gray-400 dark:text-zinc-500">· {tz.country}</span>
                       )}
                     </span>
-                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                    <span className="whitespace-nowrap text-xs text-gray-400 dark:text-zinc-500">
                       UTC{tz.offset}
                     </span>
                   </span>
@@ -243,7 +244,7 @@ function TimezoneSelect({
               </li>
             ))}
             {filtered.length === 0 && (
-              <li className="px-3 py-2 text-sm text-gray-500">No timezones found</li>
+              <li className="px-3 py-2 text-sm text-gray-500 dark:text-zinc-400">No timezones found</li>
             )}
           </ul>
         </div>
@@ -294,16 +295,37 @@ export default function CampaignForm({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-semibold text-gray-900">
-          {isEditing ? `Edit Campaign` : "New Campaign"}
-        </h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-zinc-800">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4 dark:border-zinc-700">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20">
+              <MailIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {isEditing ? "Edit Campaign" : "New Campaign"}
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-zinc-400">
+                {isEditing ? campaign.name : "Configure your email campaign"}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+          >
+            <XIcon className="h-5 w-5" />
+          </button>
+        </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <form onSubmit={handleSubmit}>
+          <div className="max-h-[60vh] overflow-y-auto p-6 space-y-4">
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Campaign Name *
+            <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
+              Campaign Name <span className="text-red-500">*</span>
             </label>
             <input
               id="name"
@@ -312,13 +334,13 @@ export default function CampaignForm({
               required
               defaultValue={campaign?.name}
               placeholder="e.g. Q1 Outreach"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:placeholder-zinc-500"
             />
           </div>
 
           <div>
-            <label htmlFor="subject" className="block text-sm font-medium text-gray-700">
-              Subject Line *
+            <label htmlFor="subject" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
+              Subject Line <span className="text-red-500">*</span>
             </label>
             <input
               id="subject"
@@ -327,19 +349,19 @@ export default function CampaignForm({
               required
               defaultValue={campaign?.subject}
               placeholder="e.g. Quick question about {{companyName}}"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:placeholder-zinc-500"
             />
           </div>
 
           <div>
-            <label htmlFor="emailFormat" className="block text-sm font-medium text-gray-700">
-              Email Format *
+            <label htmlFor="emailFormat" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
+              Email Format <span className="text-red-500">*</span>
             </label>
             <select
               id="emailFormat"
               name="emailFormat"
               defaultValue={campaign?.emailFormat ?? "html"}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
             >
               <option value="html">HTML</option>
               <option value="plain_text">Plain Text</option>
@@ -347,7 +369,7 @@ export default function CampaignForm({
           </div>
 
           <div>
-            <label htmlFor="delaySeconds" className="block text-sm font-medium text-gray-700">
+            <label htmlFor="delaySeconds" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
               Delay Between Sends (seconds)
             </label>
             <input
@@ -356,19 +378,22 @@ export default function CampaignForm({
               type="number"
               min="0"
               defaultValue={campaign?.delaySeconds ?? 0}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white"
             />
-            <p className="mt-1 text-xs text-gray-400">
+            <p className="mt-1.5 text-xs text-gray-400 dark:text-zinc-500">
               Time to wait between sending each email. 0 = no delay.
             </p>
           </div>
 
           {/* Scheduling Section */}
-          <div className="border-t border-gray-200 pt-4">
-            <h3 className="text-sm font-medium text-gray-900 mb-3">Send Schedule (Optional)</h3>
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-zinc-700 dark:bg-zinc-900/50">
+            <h3 className="mb-3 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+              <ClockIcon className="h-4 w-4 text-gray-400" />
+              Send Schedule (Optional)
+            </h3>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
                 Timezone
               </label>
               <TimezoneSelect value={timezone} onChange={setTimezone} />
@@ -376,14 +401,14 @@ export default function CampaignForm({
 
             <div className="mt-3 grid grid-cols-2 gap-3">
               <div>
-                <label htmlFor="sendStartHour" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="sendStartHour" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
                   From Hour
                 </label>
                 <select
                   id="sendStartHour"
                   name="sendStartHour"
                   defaultValue={campaign?.sendStartHour ?? 9}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                 >
                   {HOURS.map((h) => (
                     <option key={h.value} value={h.value}>
@@ -393,14 +418,14 @@ export default function CampaignForm({
                 </select>
               </div>
               <div>
-                <label htmlFor="sendEndHour" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="sendEndHour" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
                   To Hour
                 </label>
                 <select
                   id="sendEndHour"
                   name="sendEndHour"
                   defaultValue={campaign?.sendEndHour ?? 18}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
                 >
                   {HOURS.map((h) => (
                     <option key={h.value} value={h.value}>
@@ -412,7 +437,7 @@ export default function CampaignForm({
             </div>
 
             <div className="mt-3">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-zinc-300">
                 Send Days
               </label>
               <div className="flex flex-wrap gap-2">
@@ -421,10 +446,10 @@ export default function CampaignForm({
                     key={day.value}
                     type="button"
                     onClick={() => toggleDay(day.value)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-md border transition-colors ${
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                       sendDays.includes(day.value)
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : "bg-white text-gray-700 ring-1 ring-gray-300 hover:bg-gray-50 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-600 dark:hover:bg-zinc-700"
                     }`}
                   >
                     {day.label}
@@ -434,37 +459,62 @@ export default function CampaignForm({
               <input type="hidden" name="sendDays" value={JSON.stringify(sendDays)} />
             </div>
 
-            <p className="mt-2 text-xs text-gray-400">
+            <p className="mt-3 text-xs text-gray-400 dark:text-zinc-500">
               Emails will only be sent during selected hours and days in the chosen timezone.
             </p>
           </div>
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <div className="flex items-center gap-2 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/10 dark:text-red-400">
+              <AlertIcon className="h-5 w-5 flex-shrink-0" />
+              {error}
+            </div>
           )}
+          </div>
 
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            >
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-3 border-t border-gray-200 bg-gray-50 px-6 py-4 dark:border-zinc-700 dark:bg-zinc-800/50">
+            <Button variant="secondary" type="button" onClick={onClose}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading
-                ? "Saving..."
-                : isEditing
-                  ? "Update Campaign"
-                  : "Create Campaign"}
-            </button>
+            </Button>
+            <Button type="submit" isLoading={loading} loadingText="Saving...">
+              {isEditing ? "Update Campaign" : "Create Campaign"}
+            </Button>
           </div>
         </form>
       </div>
     </div>
+  );
+}
+
+function MailIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+    </svg>
+  );
+}
+
+function XIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+    </svg>
+  );
+}
+
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function AlertIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+    </svg>
   );
 }
