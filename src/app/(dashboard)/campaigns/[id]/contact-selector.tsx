@@ -11,6 +11,7 @@ interface Contact {
   lastName: string;
   companyName: string | null;
   isUnsubscribed: boolean;
+  emailStatus: string | null;
 }
 
 interface ContactSelectorProps {
@@ -36,22 +37,27 @@ export default function ContactSelector({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const subscribedContacts = useMemo(
-    () => contacts.filter((c) => !c.isUnsubscribed),
+  // Only show contacts that are subscribed AND have valid email status
+  const availableContacts = useMemo(
+    () => contacts.filter((c) => !c.isUnsubscribed && c.emailStatus === 'valid'),
     [contacts]
   );
 
+  // Count excluded contacts
+  const unsubscribedCount = contacts.filter(c => c.isUnsubscribed).length;
+  const invalidEmailCount = contacts.filter(c => !c.isUnsubscribed && c.emailStatus !== 'valid').length;
+
   const filtered = useMemo(() => {
-    if (!search.trim()) return subscribedContacts;
+    if (!search.trim()) return availableContacts;
     const q = search.toLowerCase();
-    return subscribedContacts.filter(
+    return availableContacts.filter(
       (c) =>
         c.firstName.toLowerCase().includes(q) ||
         c.lastName.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q) ||
         (c.companyName && c.companyName.toLowerCase().includes(q))
     );
-  }, [subscribedContacts, search]);
+  }, [availableContacts, search]);
 
   const hasChanges =
     selectedIds.size !== initialSelectedIds.length ||
@@ -69,7 +75,7 @@ export default function ContactSelector({
 
   function selectAll() {
     if (readOnly) return;
-    setSelectedIds(new Set(subscribedContacts.map((c) => c.id)));
+    setSelectedIds(new Set(availableContacts.map((c) => c.id)));
   }
 
   function deselectAll() {
@@ -92,8 +98,6 @@ export default function ContactSelector({
     });
   }
 
-  const unsubscribedCount = contacts.length - subscribedContacts.length;
-
   return (
     <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
       <div className="flex items-center justify-between">
@@ -101,14 +105,20 @@ export default function ContactSelector({
           Contact Selection
         </h2>
         <span className="text-sm text-gray-500 dark:text-gray-400">
-          {selectedIds.size} of {subscribedContacts.length} contacts selected
+          {selectedIds.size} of {availableContacts.length} contacts selected
         </span>
       </div>
 
-      {unsubscribedCount > 0 && (
+      {(unsubscribedCount > 0 || invalidEmailCount > 0) && (
         <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {unsubscribedCount} unsubscribed contact
-          {unsubscribedCount !== 1 ? "s" : ""} automatically excluded.
+          {unsubscribedCount > 0 && (
+            <span>{unsubscribedCount} unsubscribed</span>
+          )}
+          {unsubscribedCount > 0 && invalidEmailCount > 0 && <span> and </span>}
+          {invalidEmailCount > 0 && (
+            <span>{invalidEmailCount} non-valid email{invalidEmailCount !== 1 ? "s" : ""}</span>
+          )}
+          {" "}automatically excluded.
         </p>
       )}
 
@@ -145,7 +155,7 @@ export default function ContactSelector({
       <div className="mt-4 max-h-80 overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700">
         {filtered.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            {subscribedContacts.length === 0
+            {availableContacts.length === 0
               ? "No subscribed contacts available. Add contacts first."
               : "No contacts match your search."}
           </p>

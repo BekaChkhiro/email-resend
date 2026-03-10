@@ -245,3 +245,43 @@ export async function resetAllEmailStatuses(): Promise<{
     };
   }
 }
+
+// Delete all contacts with non-valid email status
+export async function deleteInvalidContacts(): Promise<{
+  success: boolean;
+  count: number;
+  error?: string;
+}> {
+  try {
+    // Delete contacts where emailStatus is NOT 'valid' and NOT null
+    // We keep null status contacts (not yet validated)
+    const result = await prisma.contact.deleteMany({
+      where: {
+        emailStatus: {
+          notIn: ['valid'],
+          not: null
+        }
+      }
+    });
+    revalidatePath('/contacts');
+    return { success: true, count: result.count };
+  } catch (err) {
+    return {
+      success: false,
+      count: 0,
+      error: err instanceof Error ? err.message : 'Delete failed'
+    };
+  }
+}
+
+// Get count of invalid contacts (for confirmation dialog)
+export async function getInvalidContactsCount(): Promise<number> {
+  return prisma.contact.count({
+    where: {
+      emailStatus: {
+        notIn: ['valid'],
+        not: null
+      }
+    }
+  });
+}

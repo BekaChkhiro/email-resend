@@ -6,7 +6,7 @@ import ContactForm from "./contact-form";
 import CSVImport from "@/components/csv-import";
 import { useRouter } from "next/navigation";
 import { Button, useConfirmDialog } from "@/components/ui";
-import { validateContactEmail, resetAllEmailStatuses } from "@/app/actions/email";
+import { validateContactEmail, resetAllEmailStatuses, deleteInvalidContacts } from "@/app/actions/email";
 import { getEmailStatusInfo } from "@/lib/emailValidator";
 
 type Contact = {
@@ -68,6 +68,7 @@ export default function ContactsTable({
   const [showImport, setShowImport] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const { confirm, Dialog } = useConfirmDialog();
@@ -79,6 +80,19 @@ export default function ContactsTable({
   const shouldStopRef = useRef(false);
 
   const filtered = contacts.filter((c) => {
+    // Status filter
+    if (statusFilter !== "all") {
+      if (statusFilter === "not_verified") {
+        if (c.emailStatus !== null) return false;
+      } else if (statusFilter === "invalid_all") {
+        // All non-valid statuses (invalid, catch-all, unknown, disposable, etc.)
+        if (!c.emailStatus || c.emailStatus === "valid") return false;
+      } else {
+        if (c.emailStatus !== statusFilter) return false;
+      }
+    }
+
+    // Search filter
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -90,6 +104,18 @@ export default function ContactsTable({
       (c.country?.toLowerCase().includes(q) ?? false)
     );
   });
+
+  // Count contacts by status for filter badges
+  const statusCounts = {
+    all: contacts.length,
+    valid: contacts.filter(c => c.emailStatus === "valid").length,
+    invalid: contacts.filter(c => c.emailStatus === "invalid").length,
+    "catch-all": contacts.filter(c => c.emailStatus === "catch-all").length,
+    unknown: contacts.filter(c => c.emailStatus === "unknown").length,
+    disposable: contacts.filter(c => c.emailStatus === "disposable").length,
+    not_verified: contacts.filter(c => c.emailStatus === null).length,
+    invalid_all: contacts.filter(c => c.emailStatus && c.emailStatus !== "valid").length,
+  };
 
   async function handleDelete(id: string) {
     const confirmed = await confirm({
@@ -231,6 +257,32 @@ export default function ContactsTable({
     router.refresh();
   }
 
+  // Delete all contacts with non-valid email status
+  async function handleDeleteInvalid() {
+    const invalidCount = contacts.filter(c => c.emailStatus && c.emailStatus !== 'valid').length;
+
+    if (invalidCount === 0) {
+      alert('No invalid contacts to delete.');
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: "Delete Invalid Contacts",
+      message: `This will permanently delete ${invalidCount} contact(s) with invalid email status (invalid, catch-all, disposable, unknown, etc.). This action cannot be undone. Continue?`,
+      confirmLabel: "Delete Invalid",
+      variant: "danger",
+    });
+
+    if (!confirmed) return;
+
+    const result = await deleteInvalidContacts();
+    if (result.success) {
+      router.refresh();
+    } else {
+      alert(`Failed to delete: ${result.error}`);
+    }
+  }
+
   const totalPages = Math.ceil(total / limit);
   const startItem = (page - 1) * limit + 1;
   const endItem = Math.min(page * limit, total);
@@ -239,15 +291,31 @@ export default function ContactsTable({
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search contacts..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder-zinc-500"
-          />
+        <div className="flex flex-1 items-center gap-3">
+          <div className="relative flex-1 max-w-md">
+            <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search contacts..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder-zinc-500"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
+          >
+            <option value="all">All Status ({statusCounts.all})</option>
+            <option value="valid">Valid ({statusCounts.valid})</option>
+            <option value="invalid">Invalid ({statusCounts.invalid})</option>
+            <option value="catch-all">Catch-all ({statusCounts["catch-all"]})</option>
+            <option value="unknown">Unknown ({statusCounts.unknown})</option>
+            <option value="disposable">Disposable ({statusCounts.disposable})</option>
+            <option value="not_verified">Not Verified ({statusCounts.not_verified})</option>
+            <option value="invalid_all">All Invalid ({statusCounts.invalid_all})</option>
+          </select>
         </div>
         <div className="flex shrink-0 gap-2">
           <Button
@@ -265,6 +333,14 @@ export default function ContactsTable({
             leftIcon={<RefreshIcon className="h-4 w-4" />}
           >
             Re-validate All
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDeleteInvalid}
+            disabled={isValidating}
+            leftIcon={<TrashIcon className="h-4 w-4" />}
+          >
+            Delete Invalid
           </Button>
           <Button
             variant="secondary"
