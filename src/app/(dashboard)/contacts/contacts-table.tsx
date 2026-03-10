@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback } from "react";
+import { useState, useTransition, useCallback, useRef } from "react";
 import { deleteContact } from "./actions";
 import ContactForm from "./contact-form";
 import CSVImport from "@/components/csv-import";
@@ -76,6 +76,7 @@ export default function ContactsTable({
   const [isValidating, setIsValidating] = useState(false);
   const [validationProgress, setValidationProgress] = useState({ current: 0, total: 0, currentEmail: '' });
   const [validatingId, setValidatingId] = useState<string | null>(null);
+  const shouldStopRef = useRef(false);
 
   const filtered = contacts.filter((c) => {
     if (!search) return true;
@@ -136,10 +137,16 @@ export default function ContactsTable({
 
     if (!confirmed) return;
 
+    shouldStopRef.current = false;
     setIsValidating(true);
     setValidationProgress({ current: 0, total: unverified.length, currentEmail: '' });
 
     for (let i = 0; i < unverified.length; i++) {
+      // Check if stopped
+      if (shouldStopRef.current) {
+        break;
+      }
+
       const contact = unverified[i];
       setValidationProgress({
         current: i + 1,
@@ -154,7 +161,7 @@ export default function ContactsTable({
       }
 
       // Wait 12 seconds between requests (except for last one)
-      if (i < unverified.length - 1) {
+      if (i < unverified.length - 1 && !shouldStopRef.current) {
         await new Promise(r => setTimeout(r, 12000));
       }
     }
@@ -166,6 +173,7 @@ export default function ContactsTable({
 
   // Stop validation
   const stopValidation = useCallback(() => {
+    shouldStopRef.current = true;
     setIsValidating(false);
     setValidationProgress({ current: 0, total: 0, currentEmail: '' });
     router.refresh();
@@ -189,10 +197,16 @@ export default function ContactsTable({
     // Small delay to let the page refresh
     await new Promise(r => setTimeout(r, 500));
 
+    shouldStopRef.current = false;
     setIsValidating(true);
     setValidationProgress({ current: 0, total: contacts.length, currentEmail: '' });
 
     for (let i = 0; i < contacts.length; i++) {
+      // Check if stopped
+      if (shouldStopRef.current) {
+        break;
+      }
+
       const contact = contacts[i];
       setValidationProgress({
         current: i + 1,
@@ -207,7 +221,7 @@ export default function ContactsTable({
       }
 
       // Wait 12 seconds between requests (except for last one)
-      if (i < contacts.length - 1) {
+      if (i < contacts.length - 1 && !shouldStopRef.current) {
         await new Promise(r => setTimeout(r, 12000));
       }
     }
