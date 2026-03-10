@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback } from "react";
 import { deleteContact } from "./actions";
 import ContactForm from "./contact-form";
 import CSVImport from "@/components/csv-import";
 import { useRouter } from "next/navigation";
 import { Button, useConfirmDialog } from "@/components/ui";
+import { validateContactEmail, resetAllEmailStatuses } from "@/app/actions/email";
+import { getEmailStatusInfo } from "@/lib/emailValidator";
 
 type Contact = {
   id: string;
@@ -70,6 +72,11 @@ export default function ContactsTable({
   const router = useRouter();
   const { confirm, Dialog } = useConfirmDialog();
 
+  // Email validation state
+  const [isValidating, setIsValidating] = useState(false);
+  const [validationProgress, setValidationProgress] = useState({ current: 0, total: 0, currentEmail: '' });
+  const [validatingId, setValidatingId] = useState<string | null>(null);
+
   const filtered = contacts.filter((c) => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -99,6 +106,117 @@ export default function ContactsTable({
     });
   }
 
+  // Validate single contact email
+  async function handleValidateSingle(contact: Contact) {
+    setValidatingId(contact.id);
+    try {
+      await validateContactEmail(contact.id);
+      router.refresh();
+    } catch (err) {
+      console.error('Validation failed:', err);
+    } finally {
+      setValidatingId(null);
+    }
+  }
+
+  // Validate all unverified contacts
+  async function handleValidateAll() {
+    const unverified = contacts.filter(c => !c.emailStatus);
+    if (unverified.length === 0) {
+      alert('All contacts are already validated.');
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: "Validate Emails",
+      message: `This will validate ${unverified.length} email(s). Due to API rate limits (5/minute), this will take approximately ${Math.ceil(unverified.length * 12 / 60)} minutes. Continue?`,
+      confirmLabel: "Start Validation",
+      variant: "info",
+    });
+
+    if (!confirmed) return;
+
+    setIsValidating(true);
+    setValidationProgress({ current: 0, total: unverified.length, currentEmail: '' });
+
+    for (let i = 0; i < unverified.length; i++) {
+      const contact = unverified[i];
+      setValidationProgress({
+        current: i + 1,
+        total: unverified.length,
+        currentEmail: contact.email
+      });
+
+      try {
+        await validateContactEmail(contact.id);
+      } catch (err) {
+        console.error(`Failed to validate ${contact.email}:`, err);
+      }
+
+      // Wait 12 seconds between requests (except for last one)
+      if (i < unverified.length - 1) {
+        await new Promise(r => setTimeout(r, 12000));
+      }
+    }
+
+    setIsValidating(false);
+    setValidationProgress({ current: 0, total: 0, currentEmail: '' });
+    router.refresh();
+  }
+
+  // Stop validation
+  const stopValidation = useCallback(() => {
+    setIsValidating(false);
+    setValidationProgress({ current: 0, total: 0, currentEmail: '' });
+    router.refresh();
+  }, [router]);
+
+  // Re-validate ALL contacts (reset statuses first)
+  async function handleRevalidateAll() {
+    const confirmed = await confirm({
+      title: "Re-validate All Emails",
+      message: `This will reset ALL ${contacts.length} email statuses and re-validate them. Due to API rate limits (5/minute), this will take approximately ${Math.ceil(contacts.length * 12 / 60)} minutes. Continue?`,
+      confirmLabel: "Reset & Re-validate",
+      variant: "warning",
+    });
+
+    if (!confirmed) return;
+
+    // Reset all statuses first
+    await resetAllEmailStatuses();
+    router.refresh();
+
+    // Small delay to let the page refresh
+    await new Promise(r => setTimeout(r, 500));
+
+    setIsValidating(true);
+    setValidationProgress({ current: 0, total: contacts.length, currentEmail: '' });
+
+    for (let i = 0; i < contacts.length; i++) {
+      const contact = contacts[i];
+      setValidationProgress({
+        current: i + 1,
+        total: contacts.length,
+        currentEmail: contact.email
+      });
+
+      try {
+        await validateContactEmail(contact.id);
+      } catch (err) {
+        console.error(`Failed to validate ${contact.email}:`, err);
+      }
+
+      // Wait 12 seconds between requests (except for last one)
+      if (i < contacts.length - 1) {
+        await new Promise(r => setTimeout(r, 12000));
+      }
+    }
+
+    setIsValidating(false);
+    setValidationProgress({ current: 0, total: 0, currentEmail: '' });
+    router.refresh();
+  }
+
   const totalPages = Math.ceil(total / limit);
   const startItem = (page - 1) * limit + 1;
   const endItem = Math.min(page * limit, total);
@@ -120,6 +238,22 @@ export default function ContactsTable({
         <div className="flex shrink-0 gap-2">
           <Button
             variant="secondary"
+            onClick={handleValidateAll}
+            disabled={isValidating}
+            leftIcon={<ShieldCheckIcon className="h-4 w-4" />}
+          >
+            {isValidating ? 'Validating...' : 'Validate New'}
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={handleRevalidateAll}
+            disabled={isValidating}
+            leftIcon={<RefreshIcon className="h-4 w-4" />}
+          >
+            Re-validate All
+          </Button>
+          <Button
+            variant="secondary"
             onClick={() => setShowImport(true)}
             leftIcon={<UploadIcon className="h-4 w-4" />}
           >
@@ -133,6 +267,45 @@ export default function ContactsTable({
           </Button>
         </div>
       </div>
+
+      {/* Validation Progress */}
+      {isValidating && (
+        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/50">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+              <div>
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                  Validating emails... ({validationProgress.current}/{validationProgress.total})
+                </p>
+                <p className="text-xs text-blue-600 dark:text-blue-400">
+                  {validationProgress.currentEmail}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={stopValidation}
+            >
+              Stop
+            </Button>
+          </div>
+          <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-200 dark:bg-blue-900">
+            <div
+              className="h-full bg-blue-600 transition-all duration-300"
+              style={{
+                width: `${validationProgress.total > 0
+                  ? (validationProgress.current / validationProgress.total) * 100
+                  : 0}%`
+              }}
+            />
+          </div>
+          <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+            Estimated time remaining: ~{Math.ceil((validationProgress.total - validationProgress.current) * 12 / 60)} minutes
+          </p>
+        </div>
+      )}
 
       {/* Table */}
       {filtered.length === 0 ? (
@@ -180,6 +353,9 @@ export default function ContactsTable({
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
                     Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
+                    Email Status
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
                     Actions
@@ -259,6 +435,38 @@ export default function ContactsTable({
                           <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
                           Subscribed
                         </span>
+                      )}
+                    </td>
+
+                    {/* Email Status */}
+                    <td className="px-4 py-3">
+                      {validatingId === contact.id ? (
+                        <div className="flex items-center gap-2">
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                          <span className="text-xs text-gray-500">Checking...</span>
+                        </div>
+                      ) : contact.emailStatus ? (
+                        (() => {
+                          const statusInfo = getEmailStatusInfo(contact.emailStatus);
+                          return (
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${statusInfo.bgClass} ${statusInfo.textClass}`}>
+                              {contact.emailStatus === 'valid' && <CheckCircleIcon className="h-3 w-3" />}
+                              {contact.emailStatus === 'invalid' && <XCircleIcon className="h-3 w-3" />}
+                              {contact.emailStatus === 'catch-all' && <QuestionMarkCircleIcon className="h-3 w-3" />}
+                              {contact.emailStatus === 'disposable' && <ExclamationTriangleIcon className="h-3 w-3" />}
+                              {statusInfo.label}
+                            </span>
+                          );
+                        })()
+                      ) : (
+                        <button
+                          onClick={() => handleValidateSingle(contact)}
+                          disabled={isValidating}
+                          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
+                        >
+                          <ShieldCheckIcon className="h-3.5 w-3.5" />
+                          Verify
+                        </button>
                       )}
                     </td>
 
@@ -449,6 +657,54 @@ function ChevronRightIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+    </svg>
+  );
+}
+
+function ShieldCheckIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+    </svg>
+  );
+}
+
+function CheckCircleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function XCircleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  );
+}
+
+function QuestionMarkCircleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z" />
+    </svg>
+  );
+}
+
+function ExclamationTriangleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+    </svg>
+  );
+}
+
+function RefreshIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
     </svg>
   );
 }

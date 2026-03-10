@@ -51,10 +51,10 @@ export async function handleToolCall(
 }
 
 // Import and register tools (will be populated as tools are implemented)
-// import "./contacts.js";
-// import "./campaigns.js";
-// import "./templates.js";
-// import "./domains.js";
+import "./contacts.js";
+import "./campaigns.js";
+import "./templates.js";
+import "./domains.js";
 // import "./warmup.js";
 // import "./inbox.js";
 // import "./analytics.js";

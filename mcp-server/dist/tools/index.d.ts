@@ -23,5 +23,9 @@ export declare function handleToolCall(name: string, args: Record<string, unknow
     }>;
     isError?: boolean;
 }>;
+import "./contacts.js";
+import "./campaigns.js";
+import "./templates.js";
+import "./domains.js";
 export {};
 //# sourceMappingURL=index.d.ts.map

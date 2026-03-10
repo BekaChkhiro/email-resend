@@ -10,7 +10,7 @@ const CSV_TO_DB_MAP: Record<string, string> = {
   title: "title",
   list_name: "listName",
   email_type: "emailType",
-  email_status: "emailStatus",
+  // email_status: "emailStatus", // Ignored - we validate emails ourselves
   location: "location",
   locality: "locality",
   region: "region",
@@ -94,6 +94,9 @@ export async function POST(request: NextRequest) {
       skipped++;
       continue;
     }
+
+    // Always clear emailStatus - we validate emails ourselves
+    delete mapped.emailStatus;
 
     if (existingEmails.has(mapped.email as string)) {
       skipped++;
