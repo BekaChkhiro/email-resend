@@ -44,6 +44,11 @@ export default async function CampaignDetailPage({
       companyName: true,
       isUnsubscribed: true,
       emailStatus: true,
+      campaignEmails: {
+        select: {
+          campaignId: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });

@@ -16,6 +16,21 @@ export default async function ContactsPage({
       orderBy: { createdAt: "desc" },
       skip,
       take: limit,
+      include: {
+        campaignEmails: {
+          select: {
+            campaignId: true,
+            campaign: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+              },
+            },
+          },
+          distinct: ['campaignId'],
+        },
+      },
     }),
     prisma.contact.count(),
     prisma.contact.count({ where: { isUnsubscribed: true } }),

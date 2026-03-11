@@ -12,6 +12,9 @@ interface Contact {
   companyName: string | null;
   isUnsubscribed: boolean;
   emailStatus: string | null;
+  campaignEmails?: {
+    campaignId: string;
+  }[];
 }
 
 interface ContactSelectorProps {
@@ -37,15 +40,29 @@ export default function ContactSelector({
   } | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  // Only show contacts that are subscribed AND have valid email status
+  // Only show contacts that are:
+  // 1. Subscribed (not unsubscribed)
+  // 2. Have valid email status
+  // 3. Not in any campaign (campaignEmails is empty)
   const availableContacts = useMemo(
-    () => contacts.filter((c) => !c.isUnsubscribed && c.emailStatus === 'valid'),
+    () => contacts.filter((c) => {
+      const isSubscribed = !c.isUnsubscribed;
+      const hasValidEmail = c.emailStatus === 'valid';
+      const notInAnyCampaign = !c.campaignEmails || c.campaignEmails.length === 0;
+      return isSubscribed && hasValidEmail && notInAnyCampaign;
+    }),
     [contacts]
   );
 
   // Count excluded contacts
   const unsubscribedCount = contacts.filter(c => c.isUnsubscribed).length;
   const invalidEmailCount = contacts.filter(c => !c.isUnsubscribed && c.emailStatus !== 'valid').length;
+  const alreadyInCampaignCount = contacts.filter(c =>
+    !c.isUnsubscribed &&
+    c.emailStatus === 'valid' &&
+    c.campaignEmails &&
+    c.campaignEmails.length > 0
+  ).length;
 
   const filtered = useMemo(() => {
     if (!search.trim()) return availableContacts;
@@ -109,17 +126,30 @@ export default function ContactSelector({
         </span>
       </div>
 
-      {(unsubscribedCount > 0 || invalidEmailCount > 0) && (
-        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-          {unsubscribedCount > 0 && (
-            <span>{unsubscribedCount} unsubscribed</span>
+      {(unsubscribedCount > 0 || invalidEmailCount > 0 || alreadyInCampaignCount > 0) && (
+        <div className="mt-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+          <p>
+            {unsubscribedCount > 0 && (
+              <span>{unsubscribedCount} unsubscribed</span>
+            )}
+            {unsubscribedCount > 0 && invalidEmailCount > 0 && <span>, </span>}
+            {invalidEmailCount > 0 && (
+              <span>{invalidEmailCount} non-valid email{invalidEmailCount !== 1 ? "s" : ""}</span>
+            )}
+            {(unsubscribedCount > 0 || invalidEmailCount > 0) && alreadyInCampaignCount > 0 && <span>, and </span>}
+            {alreadyInCampaignCount > 0 && (
+              <span className="font-medium text-blue-600 dark:text-blue-400">
+                {alreadyInCampaignCount} already in other campaign{alreadyInCampaignCount !== 1 ? "s" : ""}
+              </span>
+            )}
+            {" "}automatically excluded.
+          </p>
+          {alreadyInCampaignCount > 0 && (
+            <p className="text-blue-600 dark:text-blue-400">
+              Only contacts not yet used in any campaign are available for selection.
+            </p>
           )}
-          {unsubscribedCount > 0 && invalidEmailCount > 0 && <span> and </span>}
-          {invalidEmailCount > 0 && (
-            <span>{invalidEmailCount} non-valid email{invalidEmailCount !== 1 ? "s" : ""}</span>
-          )}
-          {" "}automatically excluded.
-        </p>
+        </div>
       )}
 
       {message && (

@@ -27,6 +27,14 @@ type Contact = {
   emailStatus: string | null;
   isUnsubscribed: boolean;
   createdAt: Date;
+  campaignEmails?: {
+    campaignId: string;
+    campaign: {
+      id: string;
+      name: string;
+      status: string;
+    };
+  }[];
 };
 
 function getInitials(firstName: string, lastName: string) {
@@ -50,6 +58,17 @@ function getAvatarColor(email: string) {
     hash = email.charCodeAt(i) + ((hash << 5) - hash);
   }
   return avatarColors[Math.abs(hash) % avatarColors.length];
+}
+
+function getUniqueCampaigns(campaignEmails?: Contact['campaignEmails']) {
+  if (!campaignEmails || campaignEmails.length === 0) return [];
+  const uniqueCampaigns = new Map();
+  campaignEmails.forEach((ce) => {
+    if (ce.campaign && !uniqueCampaigns.has(ce.campaign.id)) {
+      uniqueCampaigns.set(ce.campaign.id, ce.campaign);
+    }
+  });
+  return Array.from(uniqueCampaigns.values());
 }
 
 export default function ContactsTable({
@@ -447,6 +466,9 @@ export default function ContactsTable({
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
                     Email Status
                   </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
+                    Campaigns
+                  </th>
                   <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
                     Actions
                   </th>
@@ -558,6 +580,35 @@ export default function ContactsTable({
                           Verify
                         </button>
                       )}
+                    </td>
+
+                    {/* Campaigns */}
+                    <td className="px-4 py-3">
+                      {(() => {
+                        const campaigns = getUniqueCampaigns(contact.campaignEmails);
+                        if (campaigns.length === 0) {
+                          return (
+                            <span className="text-sm text-gray-400 dark:text-zinc-500">
+                              —
+                            </span>
+                          );
+                        }
+                        return (
+                          <div className="flex flex-col gap-1">
+                            {campaigns.map((campaign) => (
+                              <span
+                                key={campaign.id}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
+                              >
+                                {campaign.name}
+                                <span className="text-[10px] opacity-60">
+                                  ({campaign.status})
+                                </span>
+                              </span>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     {/* Actions */}
