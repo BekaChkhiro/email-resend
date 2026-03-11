@@ -201,6 +201,7 @@ export default async function CampaignDetailPage({
         campaignId={campaign.id}
         hasPrompt={!!campaign.aiPrompt?.trim()}
         contactCount={campaign.selectedContactIds.length}
+        selectedContactIds={campaign.selectedContactIds}
         readOnly={!isDraft}
         savedEmails={savedEmails}
       />

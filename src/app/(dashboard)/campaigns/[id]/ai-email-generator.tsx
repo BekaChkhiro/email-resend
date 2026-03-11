@@ -29,6 +29,7 @@ interface AiEmailGeneratorProps {
   campaignId: string;
   hasPrompt: boolean;
   contactCount: number;
+  selectedContactIds: string[];
   readOnly: boolean;
   savedEmails: SavedEmail[];
 }
@@ -37,6 +38,7 @@ export default function AiEmailGenerator({
   campaignId,
   hasPrompt,
   contactCount,
+  selectedContactIds,
   readOnly,
   savedEmails,
 }: AiEmailGeneratorProps) {
@@ -281,12 +283,28 @@ export default function AiEmailGenerator({
     handleGenerate([contactId]);
   };
 
+  const handleContinueGeneration = () => {
+    // Find contact IDs that don't have saved emails yet
+    const savedContactIds = new Set(savedEmails.map((e) => e.contactId));
+    const remainingContactIds = selectedContactIds.filter(
+      (id) => !savedContactIds.has(id)
+    );
+
+    if (remainingContactIds.length > 0) {
+      handleGenerate(remainingContactIds);
+    }
+  };
+
   const successfulEmails = emails.filter((e) => !e.error && e.body);
   const failedEmails = emails.filter((e) => e.error);
   const progressPercent =
     progress.total > 0
       ? Math.round((progress.completed / progress.total) * 100)
       : 0;
+
+  // Calculate remaining contacts that don't have AI-generated emails yet
+  const remainingCount = contactCount - savedEmails.length;
+  const hasRemainingContacts = remainingCount > 0 && !readOnly;
 
   if (readOnly && emails.length === 0) return null;
 
@@ -314,14 +332,29 @@ export default function AiEmailGenerator({
       {/* Generate Button */}
       {!readOnly && (
         <div className="mt-4">
-          <Button
-            onClick={() => handleGenerate()}
-            disabled={!hasPrompt || contactCount === 0}
-            isLoading={generating}
-            loadingText="Generating..."
-          >
-            {emails.length > 0 ? "Re-generate All Emails" : "Generate AI Emails"}
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => handleGenerate()}
+              disabled={!hasPrompt || contactCount === 0}
+              isLoading={generating}
+              loadingText="Generating..."
+            >
+              {emails.length > 0 ? "Re-generate All Emails" : "Generate AI Emails"}
+            </Button>
+
+            {/* Continue Generation Button - shown when there are saved emails and remaining contacts */}
+            {hasRemainingContacts && savedEmails.length > 0 && (
+              <Button
+                onClick={handleContinueGeneration}
+                disabled={!hasPrompt || generating}
+                isLoading={generating}
+                loadingText="Continuing..."
+                variant="secondary"
+              >
+                Continue AI Generation ({remainingCount} remaining)
+              </Button>
+            )}
+          </div>
           {!hasPrompt && (
             <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
               Save an AI prompt first before generating emails.
