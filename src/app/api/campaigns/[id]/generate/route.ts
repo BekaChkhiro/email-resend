@@ -3,6 +3,9 @@ import { prisma } from "@/lib/db";
 import { generateEmailForContact, ContactContext } from "@/lib/ai-generate";
 import { scrapeWebsite } from "@/lib/scraper";
 
+// Increase timeout for AI generation (5 minutes)
+export const maxDuration = 300;
+
 function isAuthOrBillingError(err: unknown): boolean {
   if (err && typeof err === "object" && "status" in err) {
     const status = (err as { status: number }).status;
@@ -44,6 +47,9 @@ function getFriendlyErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Unknown error";
 }
 
+// Default batch size for processing - can be overridden via request
+const DEFAULT_BATCH_SIZE = 50;
+
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -52,6 +58,8 @@ export async function POST(
 
   const body = await request.json();
   const contactIds: string[] | undefined = body.contactIds;
+  const batchSize: number = body.batchSize ?? DEFAULT_BATCH_SIZE;
+  const batchOffset: number = body.batchOffset ?? 0;
 
   const campaign = await prisma.campaign.findUnique({
     where: { id: campaignId },
@@ -93,19 +101,26 @@ export async function POST(
     );
   }
 
-  const contacts = await prisma.contact.findMany({
+  // Fetch all contacts first to get total count
+  const allContacts = await prisma.contact.findMany({
     where: {
       id: { in: targetContactIds },
       isUnsubscribed: false,
     },
   });
 
-  if (contacts.length === 0) {
+  if (allContacts.length === 0) {
     return NextResponse.json(
       { error: "No eligible contacts found." },
       { status: 400 }
     );
   }
+
+  // Apply batch pagination
+  const totalContacts = allContacts.length;
+  const contacts = allContacts.slice(batchOffset, batchOffset + batchSize);
+  const hasMoreBatches = batchOffset + batchSize < totalContacts;
+  const nextBatchOffset = batchOffset + batchSize;
 
   // Stream results using ReadableStream
   const encoder = new TextEncoder();
@@ -114,6 +129,20 @@ export async function POST(
       const totalTokens = { prompt: 0, completion: 0, total: 0 };
       let successCount = 0;
       let errorCount = 0;
+
+      // Send batch info at the start
+      controller.enqueue(
+        encoder.encode(
+          `data: ${JSON.stringify({
+            type: "batch_info",
+            batchOffset,
+            batchSize: contacts.length,
+            totalContacts,
+            hasMoreBatches,
+            nextBatchOffset: hasMoreBatches ? nextBatchOffset : null,
+          })}\n\n`
+        )
+      );
 
       for (let i = 0; i < contacts.length; i++) {
         const contact = contacts[i];
@@ -287,12 +316,17 @@ export async function POST(
         }
       }
 
-      // Send completion event
+      // Send completion event with batch info
       const doneEvent = {
         type: "done" as const,
         successCount,
         errorCount,
         totalTokens,
+        // Batch info for continuation
+        batchCompleted: batchOffset + contacts.length,
+        totalContacts,
+        hasMoreBatches,
+        nextBatchOffset: hasMoreBatches ? nextBatchOffset : null,
       };
       controller.enqueue(
         encoder.encode(`data: ${JSON.stringify(doneEvent)}\n\n`)

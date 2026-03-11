@@ -105,9 +105,9 @@ export default async function CampaignDetailPage({
     clickedAt: e.clickedAt?.toISOString() ?? null,
     errorMessage: e.errorMessage,
     contactName:
-      `${e.contact.firstName} ${e.contact.lastName ?? ""}`.trim(),
-    contactEmail: e.contact.email,
-    domainFrom: e.domain.fromEmail,
+      `${e.contact?.firstName ?? ""} ${e.contact?.lastName ?? ""}`.trim() || "Unknown",
+    contactEmail: e.contact?.email ?? "—",
+    domainFrom: e.domain?.fromEmail ?? "—",
     templateName: e.template?.versionName ?? "AI Generated",
   }));
 

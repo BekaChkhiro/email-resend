@@ -56,6 +56,13 @@ export default function AiEmailGenerator({
     successCount: number;
     errorCount: number;
   } | null>(null);
+  // Batch processing state
+  const [batchInfo, setBatchInfo] = useState<{
+    totalContacts: number;
+    batchCompleted: number;
+    hasMoreBatches: boolean;
+    nextBatchOffset: number | null;
+  } | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -64,7 +71,7 @@ export default function AiEmailGenerator({
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const handleGenerate = useCallback(
-    async (contactIds?: string[]) => {
+    async (contactIds?: string[], batchOffset?: number) => {
       setGenerating(true);
       setSummary(null);
       setSaveMessage(null);
@@ -73,16 +80,27 @@ export default function AiEmailGenerator({
       // If regenerating specific contacts, keep other emails
       if (contactIds) {
         setProgress({ completed: 0, total: contactIds.length });
-      } else {
+      } else if (batchOffset === undefined || batchOffset === 0) {
+        // Fresh start - clear emails
         setEmails([]);
+        setBatchInfo(null);
         setProgress({ completed: 0, total: contactCount });
       }
+      // If continuing a batch, keep existing emails
 
       try {
+        const requestBody: { contactIds?: string[]; batchOffset?: number } = {};
+        if (contactIds) {
+          requestBody.contactIds = contactIds;
+        }
+        if (batchOffset !== undefined) {
+          requestBody.batchOffset = batchOffset;
+        }
+
         const res = await fetch(`/api/campaigns/${campaignId}/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(contactIds ? { contactIds } : {}),
+          body: JSON.stringify(requestBody),
         });
 
         if (!res.ok) {
@@ -126,7 +144,13 @@ export default function AiEmailGenerator({
             try {
               const event = JSON.parse(dataLine);
 
-              if (event.type === "scraping") {
+              if (event.type === "batch_info") {
+                // Update progress with total contacts info
+                setProgress((prev) => ({
+                  ...prev,
+                  total: event.totalContacts,
+                }));
+              } else if (event.type === "scraping") {
                 setScrapingStatus(
                   `Researching ${event.companyDomain}...`
                 );
@@ -185,6 +209,15 @@ export default function AiEmailGenerator({
                   successCount: event.successCount,
                   errorCount: event.errorCount,
                 });
+                // Save batch info for continuation
+                if (event.hasMoreBatches !== undefined) {
+                  setBatchInfo({
+                    totalContacts: event.totalContacts,
+                    batchCompleted: event.batchCompleted,
+                    hasMoreBatches: event.hasMoreBatches,
+                    nextBatchOffset: event.nextBatchOffset,
+                  });
+                }
               }
             } catch {
               // skip malformed event
@@ -307,14 +340,16 @@ export default function AiEmailGenerator({
         <div className="mt-4">
           <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
             <span>
-              {scrapingStatus ?? `Generating email ${progress.completed + 1} of ${progress.total}...`}
+              {scrapingStatus ?? `Generating email ${emails.length + 1} of ${progress.total}...`}
             </span>
-            <span>{progressPercent}%</span>
+            <span>
+              {emails.length} / {progress.total}
+            </span>
           </div>
           <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
             <div
               className="h-full rounded-full bg-purple-600 transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
+              style={{ width: `${progress.total > 0 ? (emails.length / progress.total) * 100 : 0}%` }}
             />
           </div>
         </div>
@@ -366,6 +401,34 @@ export default function AiEmailGenerator({
                 individually below.
               </p>
             )}
+        </div>
+      )}
+
+      {/* Continue Generating Button - shown when there are more batches */}
+      {!readOnly && !generating && batchInfo?.hasMoreBatches && (
+        <div className="mt-4 rounded-md border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-purple-800 dark:text-purple-300">
+                {batchInfo.batchCompleted} of {batchInfo.totalContacts} emails generated
+              </p>
+              <p className="text-xs text-purple-600 dark:text-purple-400">
+                {batchInfo.totalContacts - batchInfo.batchCompleted} remaining
+              </p>
+            </div>
+            <Button
+              onClick={() => handleGenerate(undefined, batchInfo.nextBatchOffset!)}
+              variant="secondary"
+            >
+              Continue Generating ({batchInfo.totalContacts - batchInfo.batchCompleted} left)
+            </Button>
+          </div>
+          <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-purple-200 dark:bg-purple-800">
+            <div
+              className="h-full rounded-full bg-purple-600 transition-all duration-300"
+              style={{ width: `${(batchInfo.batchCompleted / batchInfo.totalContacts) * 100}%` }}
+            />
+          </div>
         </div>
       )}
 

@@ -41,6 +41,20 @@ export default function CampaignAnalytics({
 }: CampaignAnalyticsProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  // If no emails, show empty state
+  if (emails.length === 0) {
+    return (
+      <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900 dark:text-white">
+          Campaign Analytics
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          No email data available yet. Emails will appear here once the campaign starts sending.
+        </p>
+      </div>
+    );
+  }
+
   const total = emails.length;
   const sent = emails.filter(
     (e) => e.status !== "pending" && e.status !== "failed"
