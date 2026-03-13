@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import SubjectTemplateEditor from "./subject-template-editor";
 import TemplateEditor from "./template-editor";
 import ContactSelector from "./contact-selector";
 import PrepareSendButton from "./prepare-send-button";
@@ -133,8 +134,16 @@ export default async function CampaignDetailPage({
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
               {campaign.name}
             </h1>
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Subject: {campaign.subject}
+            <p className="mt-1 flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <span>Subject:</span>
+              <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs dark:bg-gray-700">
+                {campaign.subject}
+              </code>
+              {campaign.subject.includes("{{") && (
+                <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+                  Personalized
+                </span>
+              )}
             </p>
           </div>
           <span
@@ -176,6 +185,12 @@ export default async function CampaignDetailPage({
           emails={analyticsEmails}
         />
       )}
+
+      <SubjectTemplateEditor
+        campaignId={campaign.id}
+        initialSubject={campaign.subject}
+        readOnly={!isDraft}
+      />
 
       <TemplateEditor
         campaignId={campaign.id}

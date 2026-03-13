@@ -8,7 +8,6 @@ import { Button } from "@/components/ui";
 type Campaign = {
   id: string;
   name: string;
-  subject: string;
   emailFormat: string;
   delaySeconds: number;
   status: string;
@@ -334,21 +333,6 @@ export default function CampaignForm({
               required
               defaultValue={campaign?.name}
               placeholder="e.g. Q1 Outreach"
-              className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:placeholder-zinc-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="subject" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-zinc-300">
-              Subject Line <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="subject"
-              name="subject"
-              type="text"
-              required
-              defaultValue={campaign?.subject}
-              placeholder="e.g. Quick question about {{companyName}}"
               className="w-full rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-900 dark:text-white dark:placeholder-zinc-500"
             />
           </div>

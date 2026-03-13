@@ -15,15 +15,35 @@ const pool = new pg.Pool({
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+type ContactForTemplate = {
+  firstName?: string;
+  lastName?: string;
+  title?: string;
+  companyName?: string;
+  companyIndustry?: string;
+  location?: string;
+  country?: string;
+};
+
 function replaceTemplateVariables(
   body: string,
-  contact: { firstName?: string; companyName?: string },
-  unsubscribeUrl: string
+  contact: ContactForTemplate,
+  unsubscribeUrl?: string
 ): string {
-  return body
+  let result = body
     .replace(/\{\{firstName\}\}/g, contact.firstName ?? "")
+    .replace(/\{\{lastName\}\}/g, contact.lastName ?? "")
+    .replace(/\{\{title\}\}/g, contact.title ?? "")
     .replace(/\{\{companyName\}\}/g, contact.companyName ?? "")
-    .replace(/\{\{unsubscribeUrl\}\}/g, unsubscribeUrl);
+    .replace(/\{\{companyIndustry\}\}/g, contact.companyIndustry ?? "")
+    .replace(/\{\{location\}\}/g, contact.location ?? "")
+    .replace(/\{\{country\}\}/g, contact.country ?? "");
+
+  if (unsubscribeUrl) {
+    result = result.replace(/\{\{unsubscribeUrl\}\}/g, unsubscribeUrl);
+  }
+
+  return result;
 }
 
 async function main() {
@@ -74,7 +94,8 @@ async function main() {
     const pendingResult = await pool.query(
       `
       SELECT ce.id, ce.contact_id, ce.generated_body,
-             c.email, c.first_name, c.company_name,
+             c.email, c.first_name, c.last_name, c.title,
+             c.company_name, c.company_industry, c.location, c.country,
              d.from_name, d.from_email,
              ct.body as template_body
       FROM campaign_emails ce
@@ -101,12 +122,21 @@ async function main() {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const unsubscribeUrl = `${appUrl}/api/unsubscribe?contactId=${email.contact_id}`;
 
+    const contactData: ContactForTemplate = {
+      firstName: email.first_name,
+      lastName: email.last_name,
+      title: email.title,
+      companyName: email.company_name,
+      companyIndustry: email.company_industry,
+      location: email.location,
+      country: email.country,
+    };
+
     const rawBody = email.generated_body ?? email.template_body ?? "";
-    const emailBody = replaceTemplateVariables(
-      rawBody,
-      { firstName: email.first_name, companyName: email.company_name },
-      unsubscribeUrl
-    );
+    const emailBody = replaceTemplateVariables(rawBody, contactData, unsubscribeUrl);
+
+    // Apply template variables to subject for personalization
+    const personalizedSubject = replaceTemplateVariables(campaign.subject, contactData);
 
     const finalBody =
       campaign.email_format === "html"
@@ -117,7 +147,7 @@ async function main() {
       const result = await resend.emails.send({
         from: `${email.from_name} <${email.from_email}>`,
         to: [email.email],
-        subject: campaign.subject,
+        subject: personalizedSubject,
         ...(campaign.email_format === "html"
           ? { html: finalBody }
           : { text: finalBody }),

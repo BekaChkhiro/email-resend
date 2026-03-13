@@ -265,6 +265,33 @@ export async function updateAiPrompt(campaignId: string, aiPrompt: string) {
   return { success: true };
 }
 
+export async function updateSubjectTemplate(campaignId: string, subject: string) {
+  const campaign = await prisma.campaign.findUnique({
+    where: { id: campaignId },
+    select: { status: true },
+  });
+
+  if (!campaign) {
+    return { error: "Campaign not found." };
+  }
+  if (campaign.status !== "draft") {
+    return { error: "Only draft campaigns can be edited." };
+  }
+
+  const trimmedSubject = subject.trim();
+  if (!trimmedSubject) {
+    return { error: "Subject line cannot be empty." };
+  }
+
+  await prisma.campaign.update({
+    where: { id: campaignId },
+    data: { subject: trimmedSubject },
+  });
+
+  revalidatePath(`/campaigns/${campaignId}`);
+  return { success: true };
+}
+
 export async function deleteTemplate(templateId: string) {
   const template = await prisma.campaignTemplate.findUnique({
     where: { id: templateId },

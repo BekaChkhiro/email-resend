@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 
 export async function createCampaign(formData: FormData) {
   const name = formData.get("name") as string;
-  const subject = formData.get("subject") as string;
   const emailFormat = formData.get("emailFormat") as string;
   const delaySeconds = parseInt(formData.get("delaySeconds") as string) || 0;
   const timezone = formData.get("timezone") as string || null;
@@ -14,9 +13,12 @@ export async function createCampaign(formData: FormData) {
   const sendDaysRaw = formData.get("sendDays") as string;
   const sendDays = sendDaysRaw ? JSON.parse(sendDaysRaw) as number[] : [1, 2, 3, 4, 5];
 
-  if (!name || !subject) {
-    return { error: "Campaign name and subject are required." };
+  if (!name) {
+    return { error: "Campaign name is required." };
   }
+
+  // Subject will be set later via subject template editor
+  const subject = "{{firstName}} - Quick question";
 
   if (emailFormat !== "html" && emailFormat !== "plain_text") {
     return { error: "Email format must be html or plain_text." };
@@ -53,7 +55,6 @@ export async function createCampaign(formData: FormData) {
 
 export async function updateCampaign(id: string, formData: FormData) {
   const name = formData.get("name") as string;
-  const subject = formData.get("subject") as string;
   const emailFormat = formData.get("emailFormat") as string;
   const delaySeconds = parseInt(formData.get("delaySeconds") as string) || 0;
   const timezone = formData.get("timezone") as string || null;
@@ -62,8 +63,8 @@ export async function updateCampaign(id: string, formData: FormData) {
   const sendDaysRaw = formData.get("sendDays") as string;
   const sendDays = sendDaysRaw ? JSON.parse(sendDaysRaw) as number[] : [1, 2, 3, 4, 5];
 
-  if (!name || !subject) {
-    return { error: "Campaign name and subject are required." };
+  if (!name) {
+    return { error: "Campaign name is required." };
   }
 
   if (emailFormat !== "html" && emailFormat !== "plain_text") {
@@ -91,7 +92,6 @@ export async function updateCampaign(id: string, formData: FormData) {
     where: { id },
     data: {
       name,
-      subject,
       emailFormat,
       delaySeconds,
       timezone,

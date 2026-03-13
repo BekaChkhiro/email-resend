@@ -113,7 +113,16 @@ export async function GET(request: Request) {
       },
       include: {
         contact: {
-          select: { email: true, firstName: true, companyName: true },
+          select: {
+            email: true,
+            firstName: true,
+            lastName: true,
+            title: true,
+            companyName: true,
+            companyIndustry: true,
+            location: true,
+            country: true,
+          },
         },
         domain: {
           select: { fromName: true, fromEmail: true },
@@ -146,6 +155,12 @@ export async function GET(request: Request) {
       unsubscribeUrl
     );
 
+    // Apply template variables to subject for personalization
+    const personalizedSubject = replaceTemplateVariables(
+      campaign.subject,
+      pendingEmail.contact
+    );
+
     const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
     const finalBody =
       campaign.emailFormat === "html"
@@ -156,7 +171,7 @@ export async function GET(request: Request) {
       const result = await resend.emails.send({
         from: `${pendingEmail.domain.fromName} <${pendingEmail.domain.fromEmail}>`,
         to: [pendingEmail.contact.email],
-        subject: campaign.subject,
+        subject: personalizedSubject,
         ...(campaign.emailFormat === "html"
           ? { html: finalBody }
           : { text: finalBody }),
