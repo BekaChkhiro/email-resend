@@ -611,3 +611,350 @@ Be thorough but fair - legitimate business language is OK.`;
     return { error: "AI spam check failed. Please try again." };
   }
 }
+
+// AI Compose Email Generation (for new emails, not replies)
+export type ComposeAIAction =
+  | "generate_email"
+  | "improve"
+  | "shorter"
+  | "longer"
+  | "formal"
+  | "friendly"
+  | "fix_grammar"
+  | "fix_spam";
+
+interface ComposeAIRequest {
+  action: ComposeAIAction;
+  currentText: string;
+  recipientEmail: string;
+  recipientName?: string;
+  subject?: string;
+  customPrompt?: string;
+}
+
+export async function generateComposeAI(request: ComposeAIRequest): Promise<{ text?: string; error?: string }> {
+  const { action, currentText, recipientEmail, recipientName, subject, customPrompt } = request;
+
+  let systemPrompt = "";
+  let userPrompt = "";
+
+  const recipientInfo = recipientName ? `${recipientName} (${recipientEmail})` : recipientEmail;
+
+  switch (action) {
+    case "generate_email":
+      systemPrompt = `You are an expert email assistant. Generate a professional, helpful email based on the user's instructions.
+
+Rules:
+- Write a natural, human-sounding email
+- Keep it concise but complete
+- Be professional yet personable
+- Follow the user's specific instructions
+- Do not include subject line, greetings like "Dear X" or signatures - just the body
+- Write in plain text, no HTML
+- If the user's instructions are in a specific language, write the email in that language`;
+
+      userPrompt = `Write an email to: ${recipientInfo}
+${subject ? `Subject: ${subject}` : ""}
+
+${customPrompt ? `User instructions: ${customPrompt}` : "Generate a professional introductory email."}`;
+      break;
+
+    case "improve":
+      systemPrompt = `You are an expert email editor. Improve the given email text while keeping the same meaning and intent.
+
+Rules:
+- Make it clearer and more professional
+- Fix any awkward phrasing
+- Keep the same tone and intent
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Improve this email to ${recipientInfo}:
+
+"${currentText}"`;
+      break;
+
+    case "shorter":
+      systemPrompt = `You are an expert email editor. Make the email more concise while keeping the key points.
+
+Rules:
+- Remove unnecessary words and phrases
+- Keep the main message intact
+- Maintain professionalism
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Make this email shorter and more concise:
+
+"${currentText}"`;
+      break;
+
+    case "longer":
+      systemPrompt = `You are an expert email editor. Expand the email with more detail while keeping it natural.
+
+Rules:
+- Add relevant details and context
+- Elaborate on key points
+- Keep it professional and focused
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Expand this email with more detail:
+
+"${currentText}"`;
+      break;
+
+    case "formal":
+      systemPrompt = `You are an expert email editor. Rewrite the email in a more formal, professional tone.
+
+Rules:
+- Use formal language and phrasing
+- Remove casual expressions
+- Keep the same meaning
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Rewrite this email in a more formal tone:
+
+"${currentText}"`;
+      break;
+
+    case "friendly":
+      systemPrompt = `You are an expert email editor. Rewrite the email in a warmer, friendlier tone.
+
+Rules:
+- Use friendly, approachable language
+- Keep it professional but warm
+- Keep the same meaning
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Rewrite this email in a friendlier tone:
+
+"${currentText}"`;
+      break;
+
+    case "fix_grammar":
+      systemPrompt = `You are an expert proofreader. Fix any grammar, spelling, or punctuation errors in the email.
+
+Rules:
+- Only fix errors, don't change the style or meaning
+- Preserve the original tone
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Fix any grammar, spelling, or punctuation errors in this email:
+
+"${currentText}"`;
+      break;
+
+    case "fix_spam":
+      systemPrompt = `You are an expert email deliverability specialist. Rewrite the email to avoid spam filters while keeping the same meaning and intent.
+
+Rules:
+- Replace spam trigger words with professional alternatives
+- Avoid urgency phrases like "act now", "limited time", "hurry"
+- Avoid financial spam words like "free money", "cash bonus", "no fees"
+- Avoid exaggerated claims like "miracle", "amazing", "incredible"
+- Keep the same meaning, tone, and intent
+- Make it sound natural and professional
+- Do not add greetings or signatures
+- Write in plain text, no HTML
+- Keep the same language as the original`;
+
+      userPrompt = `Rewrite this email to avoid spam triggers while keeping the same meaning:
+
+"${currentText}"`;
+      break;
+
+    default:
+      return { error: "Unknown AI action" };
+  }
+
+  try {
+    const response = await anthropic.messages.create({
+      model: "claude-sonnet-4-20250514",
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const textBlock = response.content.find((block) => block.type === "text");
+    const text = textBlock?.text?.trim() ?? "";
+
+    return { text };
+  } catch (err) {
+    console.error("[AI Compose] Error:", err);
+    return { error: "AI generation failed. Please try again." };
+  }
+}
+
+// Get active domains for compose
+export type DomainOption = {
+  id: string;
+  fromName: string;
+  fromEmail: string;
+  domain: string;
+};
+
+export async function getActiveDomains(): Promise<DomainOption[]> {
+  const domains = await prisma.domain.findMany({
+    where: { isActive: true },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      fromName: true,
+      fromEmail: true,
+      domain: true,
+    },
+  });
+
+  return domains;
+}
+
+// Search contacts for compose
+export type ContactOption = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  companyName: string | null;
+};
+
+export async function searchContacts(query: string): Promise<ContactOption[]> {
+  if (!query || query.length < 2) {
+    return [];
+  }
+
+  const contacts = await prisma.contact.findMany({
+    where: {
+      OR: [
+        { email: { contains: query, mode: "insensitive" } },
+        { firstName: { contains: query, mode: "insensitive" } },
+        { lastName: { contains: query, mode: "insensitive" } },
+        { companyName: { contains: query, mode: "insensitive" } },
+      ],
+      isUnsubscribed: false,
+    },
+    take: 10,
+    orderBy: { email: "asc" },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      companyName: true,
+    },
+  });
+
+  return contacts;
+}
+
+// Send new email (not a reply)
+export async function sendNewEmail(formData: FormData) {
+  const domainId = formData.get("domainId") as string;
+  const toEmail = formData.get("toEmail") as string;
+  const subject = formData.get("subject") as string;
+  const body = formData.get("body") as string;
+  const attachmentFiles = formData.getAll("attachments") as File[];
+
+  if (!domainId || !toEmail || !subject?.trim() || !body?.trim()) {
+    return { error: "Domain, recipient, subject, and message body are required." };
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(toEmail)) {
+    return { error: "Invalid email address format." };
+  }
+
+  // Get domain
+  const domain = await prisma.domain.findUnique({
+    where: { id: domainId, isActive: true },
+  });
+
+  if (!domain) {
+    return { error: "Selected domain is not available." };
+  }
+
+  // Process attachments
+  const attachments: { filename: string; content: Buffer }[] = [];
+  const attachmentInfos: AttachmentInfo[] = [];
+  for (const file of attachmentFiles) {
+    if (file.size > 0) {
+      const arrayBuffer = await file.arrayBuffer();
+      attachments.push({
+        filename: file.name,
+        content: Buffer.from(arrayBuffer),
+      });
+      attachmentInfos.push({
+        filename: file.name,
+        size: file.size,
+        contentType: file.type || "application/octet-stream",
+      });
+    }
+  }
+
+  // Find or create contact
+  let contact = await prisma.contact.findUnique({
+    where: { email: toEmail },
+  });
+
+  if (!contact) {
+    // Create new contact from email
+    const emailPrefix = toEmail.split("@")[0];
+    contact = await prisma.contact.create({
+      data: {
+        email: toEmail,
+        firstName: emailPrefix,
+        lastName: "", // Required field
+      },
+    });
+  }
+
+  try {
+    // Send via Resend
+    const result = await resend.emails.send({
+      from: `${domain.fromName} <${domain.fromEmail}>`,
+      to: [toEmail],
+      subject,
+      text: body,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    });
+
+    if (result.error) {
+      return { error: result.error.message };
+    }
+
+    // Create inbox message for the sent email
+    await prisma.inboxMessage.create({
+      data: {
+        contactId: contact.id,
+        campaignId: null, // No campaign for manual emails
+        messageId: result.data?.id ? `<${result.data.id}@resend.dev>` : null,
+        direction: "outbound",
+        status: "read",
+        fromEmail: domain.fromEmail,
+        toEmail: toEmail,
+        subject,
+        textBody: body,
+        attachments: attachmentInfos,
+        receivedAt: new Date(),
+        sentAt: new Date(),
+        resendId: result.data?.id ?? null,
+      },
+    });
+
+    revalidatePath("/inbox");
+    return { success: true };
+  } catch (err) {
+    console.error("[Send New Email] Error:", err);
+    return { error: "Failed to send email. Please try again." };
+  }
+}
