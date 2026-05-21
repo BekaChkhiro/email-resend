@@ -1,8 +1,52 @@
 'use server'
 
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import { revalidatePath } from "next/cache";
 import { validateEmail, parseValidationResult } from '@/lib/emailValidator';
+
+type StatusFilter = "all" | "valid" | "invalid" | "catch-all" | "unknown" | "disposable" | "not_verified" | "invalid_all";
+
+const KNOWN_STATUSES = ["valid", "invalid", "catch-all", "unknown", "disposable"] as const;
+
+function buildScopeWhere(scope: {
+  q?: string;
+  status?: StatusFilter;
+}): Prisma.ContactWhereInput {
+  const conditions: Prisma.ContactWhereInput[] = [];
+  if (scope.q) {
+    const q = scope.q;
+    conditions.push({
+      OR: [
+        { firstName: { contains: q, mode: "insensitive" } },
+        { lastName: { contains: q, mode: "insensitive" } },
+        { email: { contains: q, mode: "insensitive" } },
+        { companyName: { contains: q, mode: "insensitive" } },
+        { title: { contains: q, mode: "insensitive" } },
+        { country: { contains: q, mode: "insensitive" } },
+      ],
+    });
+  }
+  const s = scope.status;
+  if (s && s !== "all") {
+    if (s === "not_verified") {
+      conditions.push({ OR: [{ emailStatus: null }, { emailStatus: "" }] });
+    } else if (s === "invalid_all") {
+      conditions.push({
+        AND: [
+          { emailStatus: { not: null } },
+          { emailStatus: { not: "" } },
+          { emailStatus: { not: "valid" } },
+        ],
+      });
+    } else if ((KNOWN_STATUSES as readonly string[]).includes(s)) {
+      conditions.push({ emailStatus: s });
+    }
+  }
+  if (conditions.length === 0) return {};
+  if (conditions.length === 1) return conditions[0];
+  return { AND: conditions };
+}
 
 export interface CheckEmailResult {
   isValid: boolean;
@@ -225,15 +269,16 @@ export async function updateContactEmailStatus(
   }
 }
 
-// Reset all email statuses to null
-export async function resetAllEmailStatuses(): Promise<{
-  success: boolean;
-  count: number;
-  error?: string;
-}> {
+// Reset email statuses for a scope (search/filter). Pass {} to reset everything.
+export async function resetEmailStatuses(scope: {
+  q?: string;
+  status?: StatusFilter;
+} = {}): Promise<{ success: boolean; count: number; error?: string }> {
   try {
+    const where = buildScopeWhere(scope);
     const result = await prisma.contact.updateMany({
-      data: { emailStatus: null }
+      where,
+      data: { emailStatus: null },
     });
     revalidatePath('/contacts');
     return { success: true, count: result.count };
@@ -246,23 +291,17 @@ export async function resetAllEmailStatuses(): Promise<{
   }
 }
 
-// Delete all contacts with non-valid email status
-export async function deleteInvalidContacts(): Promise<{
-  success: boolean;
-  count: number;
-  error?: string;
-}> {
+// Delete contacts in a scope (e.g., status = invalid_all + optional search)
+export async function deleteContactsByScope(scope: {
+  q?: string;
+  status?: StatusFilter;
+}): Promise<{ success: boolean; count: number; error?: string }> {
   try {
-    // Delete contacts where emailStatus is NOT 'valid' and NOT null
-    // We keep null status contacts (not yet validated)
-    const result = await prisma.contact.deleteMany({
-      where: {
-        emailStatus: {
-          notIn: ['valid'],
-          not: null
-        }
-      }
-    });
+    const where = buildScopeWhere(scope);
+    if (Object.keys(where).length === 0) {
+      return { success: false, count: 0, error: "Refusing to delete with no scope" };
+    }
+    const result = await prisma.contact.deleteMany({ where });
     revalidatePath('/contacts');
     return { success: true, count: result.count };
   } catch (err) {
@@ -274,14 +313,57 @@ export async function deleteInvalidContacts(): Promise<{
   }
 }
 
-// Get count of invalid contacts (for confirmation dialog)
-export async function getInvalidContactsCount(): Promise<number> {
-  return prisma.contact.count({
-    where: {
-      emailStatus: {
-        notIn: ['valid'],
-        not: null
-      }
-    }
+// Delete by explicit IDs (for bulk-select)
+export async function deleteContactsByIds(ids: string[]): Promise<{
+  success: boolean; count: number; error?: string;
+}> {
+  if (!ids || ids.length === 0) return { success: true, count: 0 };
+  try {
+    const result = await prisma.contact.deleteMany({ where: { id: { in: ids } } });
+    revalidatePath('/contacts');
+    return { success: true, count: result.count };
+  } catch (err) {
+    return {
+      success: false,
+      count: 0,
+      error: err instanceof Error ? err.message : 'Delete failed'
+    };
+  }
+}
+
+// Count contacts in a scope that still need validation (null or '')
+export async function countUnverifiedInScope(scope: {
+  q?: string;
+  status?: StatusFilter;
+} = {}): Promise<number> {
+  const baseWhere = buildScopeWhere(scope);
+  const unverifiedWhere: Prisma.ContactWhereInput = {
+    OR: [{ emailStatus: null }, { emailStatus: "" }],
+  };
+  const where =
+    Object.keys(baseWhere).length === 0
+      ? unverifiedWhere
+      : { AND: [baseWhere, unverifiedWhere] };
+  return prisma.contact.count({ where });
+}
+
+// Fetch the next batch of unverified contacts in a scope (for the client loop)
+export async function fetchUnverifiedBatch(
+  scope: { q?: string; status?: StatusFilter } = {},
+  limit = 25
+): Promise<Array<{ id: string; email: string }>> {
+  const baseWhere = buildScopeWhere(scope);
+  const unverifiedWhere: Prisma.ContactWhereInput = {
+    OR: [{ emailStatus: null }, { emailStatus: "" }],
+  };
+  const where =
+    Object.keys(baseWhere).length === 0
+      ? unverifiedWhere
+      : { AND: [baseWhere, unverifiedWhere] };
+  return prisma.contact.findMany({
+    where,
+    select: { id: true, email: true },
+    orderBy: { createdAt: "asc" },
+    take: limit,
   });
 }

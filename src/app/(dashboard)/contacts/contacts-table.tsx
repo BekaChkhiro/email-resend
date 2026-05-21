@@ -1,12 +1,19 @@
 "use client";
 
-import { useState, useTransition, useCallback, useRef } from "react";
+import { useState, useTransition, useCallback, useRef, useEffect, useMemo } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { deleteContact } from "./actions";
 import ContactForm from "./contact-form";
 import CSVImport from "@/components/csv-import";
-import { useRouter } from "next/navigation";
-import { Button, useConfirmDialog } from "@/components/ui";
-import { validateContactEmail, resetAllEmailStatuses, deleteInvalidContacts } from "@/app/actions/email";
+import { Button, useConfirmDialog, useToast } from "@/components/ui";
+import {
+  validateContactEmail,
+  resetEmailStatuses,
+  deleteContactsByScope,
+  deleteContactsByIds,
+  countUnverifiedInScope,
+  fetchUnverifiedBatch,
+} from "@/app/actions/email";
 import { getEmailStatusInfo } from "@/lib/emailValidator";
 
 type Contact = {
@@ -29,13 +36,23 @@ type Contact = {
   createdAt: Date;
   campaignEmails?: {
     campaignId: string;
-    campaign: {
-      id: string;
-      name: string;
-      status: string;
-    };
+    campaign: { id: string; name: string; status: string };
   }[];
 };
+
+type StatusCounts = {
+  all: number;
+  valid: number;
+  invalid: number;
+  "catch-all": number;
+  unknown: number;
+  disposable: number;
+  not_verified: number;
+  invalid_all: number;
+};
+
+const RATE_LIMIT_DELAY = 12000;
+const BATCH_SIZE = 25;
 
 function getInitials(firstName: string, lastName: string) {
   return `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase();
@@ -60,87 +77,138 @@ function getAvatarColor(email: string) {
   return avatarColors[Math.abs(hash) % avatarColors.length];
 }
 
-function getUniqueCampaigns(campaignEmails?: Contact['campaignEmails']) {
+function getUniqueCampaigns(campaignEmails?: Contact["campaignEmails"]) {
   if (!campaignEmails || campaignEmails.length === 0) return [];
-  const uniqueCampaigns = new Map();
+  const seen = new Map<string, { id: string; name: string; status: string }>();
   campaignEmails.forEach((ce) => {
-    if (ce.campaign && !uniqueCampaigns.has(ce.campaign.id)) {
-      uniqueCampaigns.set(ce.campaign.id, ce.campaign);
-    }
+    if (ce.campaign && !seen.has(ce.campaign.id)) seen.set(ce.campaign.id, ce.campaign);
   });
-  return Array.from(uniqueCampaigns.values());
+  return Array.from(seen.values());
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `~${minutes}m`;
+  const hours = Math.ceil(minutes / 60);
+  return `~${hours}h`;
 }
 
 export default function ContactsTable({
   contacts,
-  total,
+  filteredTotal,
   page,
   limit,
+  searchQuery,
+  statusFilter,
+  statusCounts,
 }: {
   contacts: Contact[];
-  total: number;
+  filteredTotal: number;
   page: number;
   limit: number;
+  searchQuery: string;
+  statusFilter: string;
+  statusCounts: StatusCounts;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const toast = useToast();
+  const { confirm, Dialog } = useConfirmDialog();
+
   const [editingContact, setEditingContact] = useState<Contact | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchInput, setSearchInput] = useState(searchQuery);
   const [isPending, startTransition] = useTransition();
-  const router = useRouter();
-  const { confirm, Dialog } = useConfirmDialog();
 
   // Email validation state
   const [isValidating, setIsValidating] = useState(false);
-  const [validationProgress, setValidationProgress] = useState({ current: 0, total: 0, currentEmail: '' });
+  const [validationProgress, setValidationProgress] = useState({
+    current: 0,
+    total: 0,
+    currentEmail: "",
+  });
   const [validatingId, setValidatingId] = useState<string | null>(null);
   const shouldStopRef = useRef(false);
 
-  const filtered = contacts.filter((c) => {
-    // Status filter
-    if (statusFilter !== "all") {
-      if (statusFilter === "not_verified") {
-        if (c.emailStatus !== null) return false;
-      } else if (statusFilter === "invalid_all") {
-        // All non-valid statuses (invalid, catch-all, unknown, disposable, etc.)
-        if (!c.emailStatus || c.emailStatus === "valid") return false;
-      } else {
-        if (c.emailStatus !== statusFilter) return false;
+  // Bulk select state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Clear selection on page change
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page, searchQuery, statusFilter]);
+
+  // Sync search input when URL changes externally
+  useEffect(() => {
+    setSearchInput(searchQuery);
+  }, [searchQuery]);
+
+  // Debounced search → URL
+  useEffect(() => {
+    if (searchInput === searchQuery) return;
+    const t = setTimeout(() => {
+      updateUrl({ q: searchInput || undefined, page: undefined });
+    }, 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  const updateUrl = useCallback(
+    (patch: Record<string, string | undefined>) => {
+      const params = new URLSearchParams(searchParams.toString());
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === undefined || v === "") params.delete(k);
+        else params.set(k, v);
       }
+      const qs = params.toString();
+      router.push(qs ? `${pathname}?${qs}` : pathname);
+    },
+    [pathname, router, searchParams]
+  );
+
+  const totalPages = Math.max(1, Math.ceil(filteredTotal / limit));
+  const startItem = filteredTotal === 0 ? 0 : (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, filteredTotal);
+
+  const visibleIds = useMemo(() => contacts.map((c) => c.id), [contacts]);
+  const allOnPageSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someOnPageSelected =
+    visibleIds.some((id) => selectedIds.has(id)) && !allOnPageSelected;
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAllOnPage() {
+    if (allOnPageSelected) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.delete(id);
+        return next;
+      });
+    } else {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of visibleIds) next.add(id);
+        return next;
+      });
     }
-
-    // Search filter
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      c.firstName.toLowerCase().includes(q) ||
-      c.lastName.toLowerCase().includes(q) ||
-      c.email.toLowerCase().includes(q) ||
-      (c.companyName?.toLowerCase().includes(q) ?? false) ||
-      (c.title?.toLowerCase().includes(q) ?? false) ||
-      (c.country?.toLowerCase().includes(q) ?? false)
-    );
-  });
-
-  // Count contacts by status for filter badges
-  const statusCounts = {
-    all: contacts.length,
-    valid: contacts.filter(c => c.emailStatus === "valid").length,
-    invalid: contacts.filter(c => c.emailStatus === "invalid").length,
-    "catch-all": contacts.filter(c => c.emailStatus === "catch-all").length,
-    unknown: contacts.filter(c => c.emailStatus === "unknown").length,
-    disposable: contacts.filter(c => c.emailStatus === "disposable").length,
-    not_verified: contacts.filter(c => c.emailStatus === null).length,
-    invalid_all: contacts.filter(c => c.emailStatus && c.emailStatus !== "valid").length,
-  };
+  }
 
   async function handleDelete(id: string) {
     const confirmed = await confirm({
       title: "Delete Contact",
-      message:
-        "Are you sure you want to delete this contact? This action cannot be undone.",
+      message: "Are you sure you want to delete this contact? This action cannot be undone.",
       confirmLabel: "Delete",
       variant: "danger",
     });
@@ -149,201 +217,228 @@ export default function ContactsTable({
     startTransition(async () => {
       await deleteContact(id);
       setDeletingId(null);
+      toast("Contact deleted", "success");
     });
   }
 
-  // Validate single contact email
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    const confirmed = await confirm({
+      title: "Delete Selected",
+      message: `Delete ${selectedIds.size} selected contact(s)? This cannot be undone.`,
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+    const ids = Array.from(selectedIds);
+    const res = await deleteContactsByIds(ids);
+    if (res.success) {
+      toast(`Deleted ${res.count} contact(s)`, "success");
+      setSelectedIds(new Set());
+      router.refresh();
+    } else {
+      toast(res.error || "Delete failed", "error");
+    }
+  }
+
+  // Single contact validation
   async function handleValidateSingle(contact: Contact) {
     setValidatingId(contact.id);
     try {
-      await validateContactEmail(contact.id);
+      const r = await validateContactEmail(contact.id);
+      if (r.success) toast(`${contact.email}: ${r.status}`, r.status === "valid" ? "success" : "info");
+      else toast(r.error || "Validation failed", "error");
       router.refresh();
     } catch (err) {
-      console.error('Validation failed:', err);
+      console.error("Validation failed:", err);
+      toast("Validation failed", "error");
     } finally {
       setValidatingId(null);
     }
   }
 
-  // Validate all unverified contacts
-  async function handleValidateAll() {
-    const unverified = contacts.filter(c => !c.emailStatus);
-    if (unverified.length === 0) {
-      alert('All contacts are already validated.');
+  // Run the queue: pull unverified contacts in scope (search + status), validate one-by-one
+  async function runValidationQueue(scope: { q?: string; status?: string }, totalCount: number) {
+    shouldStopRef.current = false;
+    setIsValidating(true);
+    setValidationProgress({ current: 0, total: totalCount, currentEmail: "" });
+
+    let completed = 0;
+    let lastRefresh = 0;
+
+    try {
+      while (!shouldStopRef.current) {
+        const batch = await fetchUnverifiedBatch(
+          { q: scope.q, status: scope.status as never },
+          BATCH_SIZE
+        );
+        if (batch.length === 0) break;
+
+        for (const item of batch) {
+          if (shouldStopRef.current) break;
+
+          completed++;
+          setValidationProgress({
+            current: completed,
+            total: totalCount,
+            currentEmail: item.email,
+          });
+
+          try {
+            await validateContactEmail(item.id);
+          } catch (err) {
+            console.error(`Failed to validate ${item.email}:`, err);
+          }
+
+          // Refresh the visible table every ~10 validations
+          if (completed - lastRefresh >= 10) {
+            lastRefresh = completed;
+            router.refresh();
+          }
+
+          // Rate limit
+          if (!shouldStopRef.current) {
+            await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY));
+          }
+        }
+      }
+    } finally {
+      setIsValidating(false);
+      setValidationProgress({ current: 0, total: 0, currentEmail: "" });
+      router.refresh();
+      if (shouldStopRef.current) toast("Validation stopped", "warning");
+      else toast(`Validated ${completed} email(s)`, "success");
+    }
+  }
+
+  async function handleValidateNew() {
+    const unverifiedTotal = await countUnverifiedInScope({
+      q: searchQuery || undefined,
+      status: statusFilter as never,
+    });
+
+    if (unverifiedTotal === 0) {
+      toast("No unverified contacts in current view", "info");
       return;
     }
 
+    const seconds = unverifiedTotal * 12;
     const confirmed = await confirm({
-      title: "Validate Emails",
-      message: `This will validate ${unverified.length} email(s). Due to API rate limits (5/minute), this will take approximately ${Math.ceil(unverified.length * 12 / 60)} minutes. Continue?`,
-      confirmLabel: "Start Validation",
+      title: "Validate Unverified Emails",
+      message: `This will validate ${unverifiedTotal.toLocaleString()} unverified email(s) in the current filter. Rate-limited to 5/minute → ${formatDuration(
+        seconds
+      )}. Keep this tab open. You can stop anytime. Continue?`,
+      confirmLabel: "Start",
       variant: "info",
     });
-
     if (!confirmed) return;
 
-    shouldStopRef.current = false;
-    setIsValidating(true);
-    setValidationProgress({ current: 0, total: unverified.length, currentEmail: '' });
-
-    for (let i = 0; i < unverified.length; i++) {
-      // Check if stopped
-      if (shouldStopRef.current) {
-        break;
-      }
-
-      const contact = unverified[i];
-      setValidationProgress({
-        current: i + 1,
-        total: unverified.length,
-        currentEmail: contact.email
-      });
-
-      try {
-        await validateContactEmail(contact.id);
-      } catch (err) {
-        console.error(`Failed to validate ${contact.email}:`, err);
-      }
-
-      // Wait 12 seconds between requests (except for last one)
-      if (i < unverified.length - 1 && !shouldStopRef.current) {
-        await new Promise(r => setTimeout(r, 12000));
-      }
-    }
-
-    setIsValidating(false);
-    setValidationProgress({ current: 0, total: 0, currentEmail: '' });
-    router.refresh();
+    await runValidationQueue(
+      { q: searchQuery || undefined, status: statusFilter },
+      unverifiedTotal
+    );
   }
 
-  // Stop validation
-  const stopValidation = useCallback(() => {
-    shouldStopRef.current = true;
-    setIsValidating(false);
-    setValidationProgress({ current: 0, total: 0, currentEmail: '' });
-    router.refresh();
-  }, [router]);
-
-  // Re-validate ALL contacts (reset statuses first)
   async function handleRevalidateAll() {
+    const scopeLabel = searchQuery || statusFilter !== "all" ? "current filter" : "ALL";
+    const targetCount =
+      statusFilter === "all" && !searchQuery
+        ? statusCounts.all
+        : filteredTotal;
+
     const confirmed = await confirm({
-      title: "Re-validate All Emails",
-      message: `This will reset ALL ${contacts.length} email statuses and re-validate them. Due to API rate limits (5/minute), this will take approximately ${Math.ceil(contacts.length * 12 / 60)} minutes. Continue?`,
+      title: "Re-validate Emails",
+      message: `This will RESET email statuses for ${targetCount.toLocaleString()} contact(s) in the ${scopeLabel} scope, then re-validate one-by-one. Rate limit: 5/min → ${formatDuration(
+        targetCount * 12
+      )}. Keep this tab open. Continue?`,
       confirmLabel: "Reset & Re-validate",
       variant: "warning",
     });
-
     if (!confirmed) return;
 
-    // Reset all statuses first
-    await resetAllEmailStatuses();
-    router.refresh();
-
-    // Small delay to let the page refresh
-    await new Promise(r => setTimeout(r, 500));
-
-    shouldStopRef.current = false;
-    setIsValidating(true);
-    setValidationProgress({ current: 0, total: contacts.length, currentEmail: '' });
-
-    for (let i = 0; i < contacts.length; i++) {
-      // Check if stopped
-      if (shouldStopRef.current) {
-        break;
-      }
-
-      const contact = contacts[i];
-      setValidationProgress({
-        current: i + 1,
-        total: contacts.length,
-        currentEmail: contact.email
-      });
-
-      try {
-        await validateContactEmail(contact.id);
-      } catch (err) {
-        console.error(`Failed to validate ${contact.email}:`, err);
-      }
-
-      // Wait 12 seconds between requests (except for last one)
-      if (i < contacts.length - 1 && !shouldStopRef.current) {
-        await new Promise(r => setTimeout(r, 12000));
-      }
-    }
-
-    setIsValidating(false);
-    setValidationProgress({ current: 0, total: 0, currentEmail: '' });
-    router.refresh();
-  }
-
-  // Delete all contacts with non-valid email status
-  async function handleDeleteInvalid() {
-    const invalidCount = contacts.filter(c => c.emailStatus && c.emailStatus !== 'valid').length;
-
-    if (invalidCount === 0) {
-      alert('No invalid contacts to delete.');
+    const reset = await resetEmailStatuses({
+      q: searchQuery || undefined,
+      status: statusFilter as never,
+    });
+    if (!reset.success) {
+      toast(reset.error || "Reset failed", "error");
       return;
     }
+    toast(`Reset ${reset.count} status(es). Starting validation…`, "info");
+    router.refresh();
+    await new Promise((r) => setTimeout(r, 300));
 
+    await runValidationQueue(
+      { q: searchQuery || undefined, status: statusFilter },
+      reset.count
+    );
+  }
+
+  const stopValidation = useCallback(() => {
+    shouldStopRef.current = true;
+  }, []);
+
+  async function handleDeleteInvalid() {
+    const invalidCount = statusCounts.invalid_all;
+    if (invalidCount === 0) {
+      toast("No invalid contacts to delete", "info");
+      return;
+    }
     const confirmed = await confirm({
       title: "Delete Invalid Contacts",
-      message: `This will permanently delete ${invalidCount} contact(s) with invalid email status (invalid, catch-all, disposable, unknown, etc.). This action cannot be undone. Continue?`,
+      message: `Permanently delete ${invalidCount.toLocaleString()} contact(s) with non-valid status (invalid / catch-all / unknown / disposable). This action cannot be undone. Continue?`,
       confirmLabel: "Delete Invalid",
       variant: "danger",
     });
-
     if (!confirmed) return;
 
-    const result = await deleteInvalidContacts();
+    const result = await deleteContactsByScope({ status: "invalid_all" });
     if (result.success) {
+      toast(`Deleted ${result.count} invalid contact(s)`, "success");
       router.refresh();
     } else {
-      alert(`Failed to delete: ${result.error}`);
+      toast(result.error || "Delete failed", "error");
     }
   }
-
-  const totalPages = Math.ceil(total / limit);
-  const startItem = (page - 1) * limit + 1;
-  const endItem = Math.min(page * limit, total);
 
   return (
     <div className="space-y-4">
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-1 items-center gap-3">
           <div className="relative flex-1 max-w-md">
             <SearchIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Search contacts..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white dark:placeholder-zinc-500"
             />
           </div>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => updateUrl({ status: e.target.value === "all" ? undefined : e.target.value, page: undefined })}
             className="rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 shadow-sm transition-colors focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-600 dark:bg-zinc-800 dark:text-white"
           >
-            <option value="all">All Status ({statusCounts.all})</option>
-            <option value="valid">Valid ({statusCounts.valid})</option>
-            <option value="invalid">Invalid ({statusCounts.invalid})</option>
-            <option value="catch-all">Catch-all ({statusCounts["catch-all"]})</option>
-            <option value="unknown">Unknown ({statusCounts.unknown})</option>
-            <option value="disposable">Disposable ({statusCounts.disposable})</option>
-            <option value="not_verified">Not Verified ({statusCounts.not_verified})</option>
-            <option value="invalid_all">All Invalid ({statusCounts.invalid_all})</option>
+            <option value="all">All Status ({statusCounts.all.toLocaleString()})</option>
+            <option value="valid">Valid ({statusCounts.valid.toLocaleString()})</option>
+            <option value="invalid">Invalid ({statusCounts.invalid.toLocaleString()})</option>
+            <option value="catch-all">Catch-all ({statusCounts["catch-all"].toLocaleString()})</option>
+            <option value="unknown">Unknown ({statusCounts.unknown.toLocaleString()})</option>
+            <option value="disposable">Disposable ({statusCounts.disposable.toLocaleString()})</option>
+            <option value="not_verified">Not Verified ({statusCounts.not_verified.toLocaleString()})</option>
+            <option value="invalid_all">All Invalid ({statusCounts.invalid_all.toLocaleString()})</option>
           </select>
         </div>
-        <div className="flex shrink-0 gap-2">
+        <div className="flex shrink-0 flex-wrap gap-2">
           <Button
             variant="secondary"
-            onClick={handleValidateAll}
+            onClick={handleValidateNew}
             disabled={isValidating}
             leftIcon={<ShieldCheckIcon className="h-4 w-4" />}
           >
-            {isValidating ? 'Validating...' : 'Validate New'}
+            Validate Unverified
           </Button>
           <Button
             variant="secondary"
@@ -351,7 +446,7 @@ export default function ContactsTable({
             disabled={isValidating}
             leftIcon={<RefreshIcon className="h-4 w-4" />}
           >
-            Re-validate All
+            Re-validate{statusFilter !== "all" || searchQuery ? " Filtered" : " All"}
           </Button>
           <Button
             variant="danger"
@@ -368,14 +463,28 @@ export default function ContactsTable({
           >
             Import CSV
           </Button>
-          <Button
-            onClick={() => setShowAddForm(true)}
-            leftIcon={<PlusIcon className="h-4 w-4" />}
-          >
+          <Button onClick={() => setShowAddForm(true)} leftIcon={<PlusIcon className="h-4 w-4" />}>
             Add Contact
           </Button>
         </div>
       </div>
+
+      {/* Bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 dark:border-emerald-900 dark:bg-emerald-950/50">
+          <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">
+            {selectedIds.size} selected
+          </p>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => setSelectedIds(new Set())}>
+              Clear
+            </Button>
+            <Button variant="danger" size="sm" onClick={handleBulkDelete} leftIcon={<TrashIcon className="h-4 w-4" />}>
+              Delete Selected
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Validation Progress */}
       {isValidating && (
@@ -385,18 +494,13 @@ export default function ContactsTable({
               <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
               <div>
                 <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                  Validating emails... ({validationProgress.current}/{validationProgress.total})
+                  Validating emails... ({validationProgress.current.toLocaleString()}/
+                  {validationProgress.total.toLocaleString()})
                 </p>
-                <p className="text-xs text-blue-600 dark:text-blue-400">
-                  {validationProgress.currentEmail}
-                </p>
+                <p className="text-xs text-blue-600 dark:text-blue-400">{validationProgress.currentEmail}</p>
               </div>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={stopValidation}
-            >
+            <Button variant="secondary" size="sm" onClick={stopValidation}>
               Stop
             </Button>
           </div>
@@ -404,39 +508,43 @@ export default function ContactsTable({
             <div
               className="h-full bg-blue-600 transition-all duration-300"
               style={{
-                width: `${validationProgress.total > 0
-                  ? (validationProgress.current / validationProgress.total) * 100
-                  : 0}%`
+                width: `${
+                  validationProgress.total > 0
+                    ? (validationProgress.current / validationProgress.total) * 100
+                    : 0
+                }%`,
               }}
             />
           </div>
           <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
-            Estimated time remaining: ~{Math.ceil((validationProgress.total - validationProgress.current) * 12 / 60)} minutes
+            Estimated remaining:{" "}
+            {formatDuration((validationProgress.total - validationProgress.current) * 12)}
+          </p>
+          <p className="mt-1 text-xs text-blue-500 dark:text-blue-400/80">
+            Keep this tab open. Closing the browser will stop validation (progress in DB is preserved — resume by clicking the button again).
           </p>
         </div>
       )}
 
       {/* Table */}
-      {filtered.length === 0 ? (
+      {contacts.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-gray-200 bg-white py-16 dark:border-zinc-700 dark:bg-zinc-800">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100 dark:bg-zinc-700">
             <UsersIcon className="h-7 w-7 text-gray-400 dark:text-zinc-500" />
           </div>
           <h3 className="mt-4 text-sm font-medium text-gray-900 dark:text-white">
-            {contacts.length === 0 ? "No contacts yet" : "No contacts found"}
+            {filteredTotal === 0 && (searchQuery || statusFilter !== "all")
+              ? "No contacts match your filter"
+              : "No contacts yet"}
           </h3>
           <p className="mt-1 text-sm text-gray-500 dark:text-zinc-400">
-            {contacts.length === 0
-              ? "Add your first contact or import from CSV."
-              : "Try adjusting your search."}
+            {searchQuery || statusFilter !== "all"
+              ? "Try clearing the search or status filter."
+              : "Add your first contact or import from CSV."}
           </p>
-          {contacts.length === 0 && (
+          {!searchQuery && statusFilter === "all" && (
             <div className="mt-4 flex gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowImport(true)}
-              >
+              <Button variant="secondary" size="sm" onClick={() => setShowImport(true)}>
                 Import CSV
               </Button>
               <Button size="sm" onClick={() => setShowAddForm(true)}>
@@ -451,36 +559,44 @@ export default function ContactsTable({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50/50 dark:border-zinc-700 dark:bg-zinc-800/50">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
-                    Contact
+                  <th className="w-10 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all on this page"
+                      checked={allOnPageSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someOnPageSelected;
+                      }}
+                      onChange={toggleSelectAllOnPage}
+                      className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                    />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
-                    Company
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
-                    Location
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
-                    Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
-                    Email Status
-                  </th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
-                    Campaigns
-                  </th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
-                    Actions
-                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">Contact</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">Company</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">Location</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">Email Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">Campaigns</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-zinc-400">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-zinc-700">
-                {filtered.map((contact) => (
+                {contacts.map((contact) => (
                   <tr
                     key={contact.id}
-                    className="group transition-colors hover:bg-gray-50 dark:hover:bg-zinc-700/50"
+                    className={`group transition-colors hover:bg-gray-50 dark:hover:bg-zinc-700/50 ${
+                      selectedIds.has(contact.id) ? "bg-emerald-50/40 dark:bg-emerald-950/20" : ""
+                    }`}
                   >
-                    {/* Contact */}
+                    <td className="px-3 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${contact.email}`}
+                        checked={selectedIds.has(contact.id)}
+                        onChange={() => toggleSelect(contact.id)}
+                        className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div
@@ -494,34 +610,22 @@ export default function ContactsTable({
                           <p className="truncate font-medium text-gray-900 dark:text-white">
                             {contact.firstName} {contact.lastName}
                           </p>
-                          <p className="truncate text-sm text-gray-500 dark:text-zinc-400">
-                            {contact.email}
-                          </p>
+                          <p className="truncate text-sm text-gray-500 dark:text-zinc-400">{contact.email}</p>
                         </div>
                       </div>
                     </td>
-
-                    {/* Company */}
                     <td className="px-4 py-3">
                       {contact.companyName ? (
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-gray-900 dark:text-white">
-                            {contact.companyName}
-                          </p>
+                          <p className="truncate text-sm font-medium text-gray-900 dark:text-white">{contact.companyName}</p>
                           {contact.title && (
-                            <p className="truncate text-sm text-gray-500 dark:text-zinc-400">
-                              {contact.title}
-                            </p>
+                            <p className="truncate text-sm text-gray-500 dark:text-zinc-400">{contact.title}</p>
                           )}
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-400 dark:text-zinc-500">
-                          —
-                        </span>
+                        <span className="text-sm text-gray-400 dark:text-zinc-500">—</span>
                       )}
                     </td>
-
-                    {/* Location */}
                     <td className="px-4 py-3">
                       {contact.country || contact.location ? (
                         <div className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-zinc-300">
@@ -529,13 +633,9 @@ export default function ContactsTable({
                           <span>{contact.country || contact.location}</span>
                         </div>
                       ) : (
-                        <span className="text-sm text-gray-400 dark:text-zinc-500">
-                          —
-                        </span>
+                        <span className="text-sm text-gray-400 dark:text-zinc-500">—</span>
                       )}
                     </td>
-
-                    {/* Status */}
                     <td className="px-4 py-3">
                       {contact.isUnsubscribed ? (
                         <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700 dark:bg-red-500/10 dark:text-red-400">
@@ -549,8 +649,6 @@ export default function ContactsTable({
                         </span>
                       )}
                     </td>
-
-                    {/* Email Status */}
                     <td className="px-4 py-3">
                       {validatingId === contact.id ? (
                         <div className="flex items-center gap-2">
@@ -561,11 +659,13 @@ export default function ContactsTable({
                         (() => {
                           const statusInfo = getEmailStatusInfo(contact.emailStatus);
                           return (
-                            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${statusInfo.bgClass} ${statusInfo.textClass}`}>
-                              {contact.emailStatus === 'valid' && <CheckCircleIcon className="h-3 w-3" />}
-                              {contact.emailStatus === 'invalid' && <XCircleIcon className="h-3 w-3" />}
-                              {contact.emailStatus === 'catch-all' && <QuestionMarkCircleIcon className="h-3 w-3" />}
-                              {contact.emailStatus === 'disposable' && <ExclamationTriangleIcon className="h-3 w-3" />}
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${statusInfo.bgClass} ${statusInfo.textClass}`}
+                            >
+                              {contact.emailStatus === "valid" && <CheckCircleIcon className="h-3 w-3" />}
+                              {contact.emailStatus === "invalid" && <XCircleIcon className="h-3 w-3" />}
+                              {contact.emailStatus === "catch-all" && <QuestionMarkCircleIcon className="h-3 w-3" />}
+                              {contact.emailStatus === "disposable" && <ExclamationTriangleIcon className="h-3 w-3" />}
                               {statusInfo.label}
                             </span>
                           );
@@ -581,18 +681,10 @@ export default function ContactsTable({
                         </button>
                       )}
                     </td>
-
-                    {/* Campaigns */}
                     <td className="px-4 py-3">
                       {(() => {
                         const campaigns = getUniqueCampaigns(contact.campaignEmails);
-                        if (campaigns.length === 0) {
-                          return (
-                            <span className="text-sm text-gray-400 dark:text-zinc-500">
-                              —
-                            </span>
-                          );
-                        }
+                        if (campaigns.length === 0) return <span className="text-sm text-gray-400 dark:text-zinc-500">—</span>;
                         return (
                           <div className="flex flex-col gap-1">
                             {campaigns.map((campaign) => (
@@ -601,17 +693,13 @@ export default function ContactsTable({
                                 className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
                               >
                                 {campaign.name}
-                                <span className="text-[10px] opacity-60">
-                                  ({campaign.status})
-                                </span>
+                                <span className="text-[10px] opacity-60">({campaign.status})</span>
                               </span>
                             ))}
                           </div>
                         );
                       })()}
                     </td>
-
-                    {/* Actions */}
                     <td className="px-4 py-3">
                       <div className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                         <button
@@ -642,30 +730,17 @@ export default function ContactsTable({
           {/* Pagination */}
           <div className="flex items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-zinc-700">
             <p className="text-sm text-gray-500 dark:text-zinc-400">
-              Showing{" "}
-              <span className="font-medium text-gray-900 dark:text-white">
-                {startItem}
-              </span>{" "}
-              to{" "}
-              <span className="font-medium text-gray-900 dark:text-white">
-                {endItem}
-              </span>{" "}
-              of{" "}
-              <span className="font-medium text-gray-900 dark:text-white">
-                {total}
-              </span>{" "}
-              contacts
-              {search && (
-                <span className="text-gray-400">
-                  {" "}
-                  ({filtered.length} matching)
-                </span>
+              Showing <span className="font-medium text-gray-900 dark:text-white">{startItem.toLocaleString()}</span> to{" "}
+              <span className="font-medium text-gray-900 dark:text-white">{endItem.toLocaleString()}</span> of{" "}
+              <span className="font-medium text-gray-900 dark:text-white">{filteredTotal.toLocaleString()}</span> contacts
+              {(searchQuery || statusFilter !== "all") && (
+                <span className="text-gray-400"> (filtered)</span>
               )}
             </p>
             {totalPages > 1 && (
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => router.push(`/contacts?page=${page - 1}`)}
+                  onClick={() => updateUrl({ page: String(page - 1) })}
                   disabled={page === 1}
                   className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-700"
                 >
@@ -673,19 +748,14 @@ export default function ContactsTable({
                 </button>
                 {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
                   let pageNum: number;
-                  if (totalPages <= 5) {
-                    pageNum = i + 1;
-                  } else if (page <= 3) {
-                    pageNum = i + 1;
-                  } else if (page >= totalPages - 2) {
-                    pageNum = totalPages - 4 + i;
-                  } else {
-                    pageNum = page - 2 + i;
-                  }
+                  if (totalPages <= 5) pageNum = i + 1;
+                  else if (page <= 3) pageNum = i + 1;
+                  else if (page >= totalPages - 2) pageNum = totalPages - 4 + i;
+                  else pageNum = page - 2 + i;
                   return (
                     <button
                       key={pageNum}
-                      onClick={() => router.push(`/contacts?page=${pageNum}`)}
+                      onClick={() => updateUrl({ page: String(pageNum) })}
                       className={`min-w-[32px] rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
                         pageNum === page
                           ? "bg-emerald-600 text-white"
@@ -697,7 +767,7 @@ export default function ContactsTable({
                   );
                 })}
                 <button
-                  onClick={() => router.push(`/contacts?page=${page + 1}`)}
+                  onClick={() => updateUrl({ page: String(page + 1) })}
                   disabled={page === totalPages}
                   className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-700"
                 >
@@ -710,16 +780,14 @@ export default function ContactsTable({
       )}
 
       {showAddForm && <ContactForm onClose={() => setShowAddForm(false)} />}
-      {editingContact && (
-        <ContactForm
-          contact={editingContact}
-          onClose={() => setEditingContact(null)}
-        />
-      )}
+      {editingContact && <ContactForm contact={editingContact} onClose={() => setEditingContact(null)} />}
       {showImport && (
         <CSVImport
           onClose={() => setShowImport(false)}
-          onSuccess={() => router.refresh()}
+          onSuccess={() => {
+            toast("Import complete", "success");
+            router.refresh();
+          }}
         />
       )}
 
@@ -736,7 +804,6 @@ function SearchIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function PlusIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -744,7 +811,6 @@ function PlusIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function UploadIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -752,7 +818,6 @@ function UploadIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function UsersIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -760,7 +825,6 @@ function UsersIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function LocationIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -769,7 +833,6 @@ function LocationIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function EditIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -777,7 +840,6 @@ function EditIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function TrashIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -785,7 +847,6 @@ function TrashIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function ChevronLeftIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -793,7 +854,6 @@ function ChevronLeftIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function ChevronRightIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -801,7 +861,6 @@ function ChevronRightIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function ShieldCheckIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -809,7 +868,6 @@ function ShieldCheckIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function CheckCircleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -817,7 +875,6 @@ function CheckCircleIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function XCircleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -825,7 +882,6 @@ function XCircleIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function QuestionMarkCircleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -833,7 +889,6 @@ function QuestionMarkCircleIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function ExclamationTriangleIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
@@ -841,7 +896,6 @@ function ExclamationTriangleIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
 function RefreshIcon({ className }: { className?: string }) {
   return (
     <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
