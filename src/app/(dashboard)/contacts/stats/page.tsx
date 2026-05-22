@@ -111,7 +111,7 @@ export default async function ContactStatsPage() {
       SELECT LOWER(SPLIT_PART(email, '@', 2)) AS domain, COUNT(*)::bigint AS c
       FROM contacts
       WHERE email LIKE '%@%'
-      GROUP BY domain
+      GROUP BY LOWER(SPLIT_PART(email, '@', 2))
       ORDER BY c DESC
       LIMIT 10
     `,
