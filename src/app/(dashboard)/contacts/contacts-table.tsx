@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useTransition, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { deleteContact } from "./actions";
 import ContactForm from "./contact-form";
@@ -11,8 +11,7 @@ import {
   resetEmailStatuses,
   deleteContactsByScope,
   deleteContactsByIds,
-  countUnverifiedInScope,
-  fetchUnverifiedBatch,
+  runValidationBatch,
 } from "@/app/actions/email";
 import { getEmailStatusInfo } from "@/lib/emailValidator";
 
@@ -51,9 +50,6 @@ type StatusCounts = {
   invalid_all: number;
 };
 
-const RATE_LIMIT_DELAY = 12000;
-const BATCH_SIZE = 25;
-
 function getInitials(firstName: string, lastName: string) {
   return `${firstName[0] || ""}${lastName[0] || ""}`.toUpperCase();
 }
@@ -86,14 +82,6 @@ function getUniqueCampaigns(campaignEmails?: Contact["campaignEmails"]) {
   return Array.from(seen.values());
 }
 
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.ceil(seconds / 60);
-  if (minutes < 60) return `~${minutes}m`;
-  const hours = Math.ceil(minutes / 60);
-  return `~${hours}h`;
-}
-
 export default function ContactsTable({
   contacts,
   filteredTotal,
@@ -124,15 +112,9 @@ export default function ContactsTable({
   const [searchInput, setSearchInput] = useState(searchQuery);
   const [isPending, startTransition] = useTransition();
 
-  // Email validation state
-  const [isValidating, setIsValidating] = useState(false);
-  const [validationProgress, setValidationProgress] = useState({
-    current: 0,
-    total: 0,
-    currentEmail: "",
-  });
   const [validatingId, setValidatingId] = useState<string | null>(null);
-  const shouldStopRef = useRef(false);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [resettingScope, setResettingScope] = useState(false);
 
   // Bulk select state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -257,126 +239,64 @@ export default function ContactsTable({
     }
   }
 
-  // Run the queue: pull unverified contacts in scope (search + status), validate one-by-one
-  async function runValidationQueue(scope: { q?: string; status?: string }, totalCount: number) {
-    shouldStopRef.current = false;
-    setIsValidating(true);
-    setValidationProgress({ current: 0, total: totalCount, currentEmail: "" });
-
-    let completed = 0;
-    let lastRefresh = 0;
-
-    try {
-      while (!shouldStopRef.current) {
-        const batch = await fetchUnverifiedBatch(
-          { q: scope.q, status: scope.status as never },
-          BATCH_SIZE
-        );
-        if (batch.length === 0) break;
-
-        for (const item of batch) {
-          if (shouldStopRef.current) break;
-
-          completed++;
-          setValidationProgress({
-            current: completed,
-            total: totalCount,
-            currentEmail: item.email,
-          });
-
-          try {
-            await validateContactEmail(item.id);
-          } catch (err) {
-            console.error(`Failed to validate ${item.email}:`, err);
-          }
-
-          // Refresh the visible table every ~10 validations
-          if (completed - lastRefresh >= 10) {
-            lastRefresh = completed;
-            router.refresh();
-          }
-
-          // Rate limit
-          if (!shouldStopRef.current) {
-            await new Promise((r) => setTimeout(r, RATE_LIMIT_DELAY));
-          }
-        }
-      }
-    } finally {
-      setIsValidating(false);
-      setValidationProgress({ current: 0, total: 0, currentEmail: "" });
-      router.refresh();
-      if (shouldStopRef.current) toast("Validation stopped", "warning");
-      else toast(`Validated ${completed} email(s)`, "success");
-    }
-  }
-
-  async function handleValidateNew() {
-    const unverifiedTotal = await countUnverifiedInScope({
-      q: searchQuery || undefined,
-      status: statusFilter as never,
-    });
-
-    if (unverifiedTotal === 0) {
-      toast("No unverified contacts in current view", "info");
+  // Trigger one immediate batch on the server (runs in parallel with the cron).
+  async function handleValidateNow() {
+    if (statusCounts.not_verified === 0) {
+      toast("No unverified contacts", "info");
       return;
     }
-
-    const seconds = unverifiedTotal * 12;
-    const confirmed = await confirm({
-      title: "Validate Unverified Emails",
-      message: `This will validate ${unverifiedTotal.toLocaleString()} unverified email(s) in the current filter. Rate-limited to 5/minute → ${formatDuration(
-        seconds
-      )}. Keep this tab open. You can stop anytime. Continue?`,
-      confirmLabel: "Start",
-      variant: "info",
-    });
-    if (!confirmed) return;
-
-    await runValidationQueue(
-      { q: searchQuery || undefined, status: statusFilter },
-      unverifiedTotal
-    );
+    setBatchRunning(true);
+    try {
+      const res = await runValidationBatch(5);
+      if (res.processed === 0) {
+        toast("No unverified contacts left", "info");
+      } else {
+        toast(
+          `Validated ${res.succeeded}/${res.processed}. ${res.remainingAfter.toLocaleString()} remaining.`,
+          res.failed > 0 ? "warning" : "success"
+        );
+      }
+      router.refresh();
+    } catch (err) {
+      console.error(err);
+      toast("Validation batch failed", "error");
+    } finally {
+      setBatchRunning(false);
+    }
   }
 
   async function handleRevalidateAll() {
     const scopeLabel = searchQuery || statusFilter !== "all" ? "current filter" : "ALL";
     const targetCount =
-      statusFilter === "all" && !searchQuery
-        ? statusCounts.all
-        : filteredTotal;
+      statusFilter === "all" && !searchQuery ? statusCounts.all : filteredTotal;
 
     const confirmed = await confirm({
       title: "Re-validate Emails",
-      message: `This will RESET email statuses for ${targetCount.toLocaleString()} contact(s) in the ${scopeLabel} scope, then re-validate one-by-one. Rate limit: 5/min → ${formatDuration(
-        targetCount * 12
-      )}. Keep this tab open. Continue?`,
+      message: `This will RESET email statuses for ${targetCount.toLocaleString()} contact(s) in the ${scopeLabel} scope. The background cron will then re-validate them automatically (~5/min). You can close this tab — progress is saved to the database.`,
       confirmLabel: "Reset & Re-validate",
       variant: "warning",
     });
     if (!confirmed) return;
 
-    const reset = await resetEmailStatuses({
-      q: searchQuery || undefined,
-      status: statusFilter as never,
-    });
-    if (!reset.success) {
-      toast(reset.error || "Reset failed", "error");
-      return;
+    setResettingScope(true);
+    try {
+      const reset = await resetEmailStatuses({
+        q: searchQuery || undefined,
+        status: statusFilter as never,
+      });
+      if (!reset.success) {
+        toast(reset.error || "Reset failed", "error");
+        return;
+      }
+      toast(
+        `Reset ${reset.count.toLocaleString()} status(es). Background validation will pick them up.`,
+        "success"
+      );
+      router.refresh();
+    } finally {
+      setResettingScope(false);
     }
-    toast(`Reset ${reset.count} status(es). Starting validation…`, "info");
-    router.refresh();
-    await new Promise((r) => setTimeout(r, 300));
-
-    await runValidationQueue(
-      { q: searchQuery || undefined, status: statusFilter },
-      reset.count
-    );
   }
-
-  const stopValidation = useCallback(() => {
-    shouldStopRef.current = true;
-  }, []);
 
   async function handleDeleteInvalid() {
     const invalidCount = statusCounts.invalid_all;
@@ -434,16 +354,20 @@ export default function ContactsTable({
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button
             variant="secondary"
-            onClick={handleValidateNew}
-            disabled={isValidating}
+            onClick={handleValidateNow}
+            disabled={batchRunning || resettingScope}
+            isLoading={batchRunning}
+            loadingText="Validating..."
             leftIcon={<ShieldCheckIcon className="h-4 w-4" />}
           >
-            Validate Unverified
+            Validate Now (5)
           </Button>
           <Button
             variant="secondary"
             onClick={handleRevalidateAll}
-            disabled={isValidating}
+            disabled={batchRunning || resettingScope}
+            isLoading={resettingScope}
+            loadingText="Resetting..."
             leftIcon={<RefreshIcon className="h-4 w-4" />}
           >
             Re-validate{statusFilter !== "all" || searchQuery ? " Filtered" : " All"}
@@ -451,7 +375,7 @@ export default function ContactsTable({
           <Button
             variant="danger"
             onClick={handleDeleteInvalid}
-            disabled={isValidating}
+            disabled={batchRunning || resettingScope}
             leftIcon={<TrashIcon className="h-4 w-4" />}
           >
             Delete Invalid
@@ -483,46 +407,6 @@ export default function ContactsTable({
               Delete Selected
             </Button>
           </div>
-        </div>
-      )}
-
-      {/* Validation Progress */}
-      {isValidating && (
-        <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/50">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-              <div>
-                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
-                  Validating emails... ({validationProgress.current.toLocaleString()}/
-                  {validationProgress.total.toLocaleString()})
-                </p>
-                <p className="text-xs text-blue-600 dark:text-blue-400">{validationProgress.currentEmail}</p>
-              </div>
-            </div>
-            <Button variant="secondary" size="sm" onClick={stopValidation}>
-              Stop
-            </Button>
-          </div>
-          <div className="mt-3 h-2 overflow-hidden rounded-full bg-blue-200 dark:bg-blue-900">
-            <div
-              className="h-full bg-blue-600 transition-all duration-300"
-              style={{
-                width: `${
-                  validationProgress.total > 0
-                    ? (validationProgress.current / validationProgress.total) * 100
-                    : 0
-                }%`,
-              }}
-            />
-          </div>
-          <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
-            Estimated remaining:{" "}
-            {formatDuration((validationProgress.total - validationProgress.current) * 12)}
-          </p>
-          <p className="mt-1 text-xs text-blue-500 dark:text-blue-400/80">
-            Keep this tab open. Closing the browser will stop validation (progress in DB is preserved — resume by clicking the button again).
-          </p>
         </div>
       )}
 
@@ -673,7 +557,7 @@ export default function ContactsTable({
                       ) : (
                         <button
                           onClick={() => handleValidateSingle(contact)}
-                          disabled={isValidating}
+                          disabled={batchRunning || resettingScope}
                           className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-200"
                         >
                           <ShieldCheckIcon className="h-3.5 w-3.5" />

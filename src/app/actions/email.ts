@@ -331,6 +331,48 @@ export async function deleteContactsByIds(ids: string[]): Promise<{
   }
 }
 
+// Process one batch of unverified contacts synchronously on the server.
+// Used by the "Validate Now" button to trigger an immediate batch without
+// waiting for the next cron tick. The cron continues to run in parallel.
+export async function runValidationBatch(batchSize = 5): Promise<{
+  processed: number;
+  succeeded: number;
+  failed: number;
+  remainingAfter: number;
+}> {
+  const batch = await prisma.contact.findMany({
+    where: { OR: [{ emailStatus: null }, { emailStatus: "" }] },
+    select: { id: true, email: true },
+    orderBy: { createdAt: "asc" },
+    take: batchSize,
+  });
+
+  let succeeded = 0;
+  let failed = 0;
+
+  for (const contact of batch) {
+    try {
+      const result = await validateEmail(contact.email);
+      const parsed = parseValidationResult(result);
+      const status: string = parsed.isDisposable ? "disposable" : parsed.status;
+      await prisma.contact.update({
+        where: { id: contact.id },
+        data: { emailStatus: status },
+      });
+      succeeded++;
+    } catch {
+      failed++;
+    }
+  }
+
+  const remainingAfter = await prisma.contact.count({
+    where: { OR: [{ emailStatus: null }, { emailStatus: "" }] },
+  });
+
+  revalidatePath("/contacts");
+  return { processed: batch.length, succeeded, failed, remainingAfter };
+}
+
 // Count contacts in a scope that still need validation (null or '')
 export async function countUnverifiedInScope(scope: {
   q?: string;
