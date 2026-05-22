@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import ContactsTable from "./contacts-table";
+import ValidationStatus from "./validation-status";
 
 const PAGE_SIZE = 50;
 
@@ -182,6 +183,12 @@ export default async function ContactsPage({
           </div>
         </div>
       </div>
+
+      <ValidationStatus
+        total={total}
+        verified={total - counts.not_verified}
+        remaining={counts.not_verified}
+      />
 
       <ContactsTable
         contacts={contacts}

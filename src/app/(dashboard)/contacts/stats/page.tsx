@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import StatusDonut from "./status-donut";
 import Timeline from "./timeline";
 
+export const dynamic = "force-dynamic";
+
 const ROLE_BASED_PREFIXES = [
   "info",
   "admin",
