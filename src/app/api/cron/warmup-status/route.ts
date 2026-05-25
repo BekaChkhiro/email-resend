@@ -6,16 +6,14 @@ import {
   getWarmupProgress,
   WARMUP_DURATION_DAYS,
 } from "@/lib/warmup-schedule";
+import { requireCronAuth } from "@/lib/cron-auth";
+import { getWarmupWorkerState } from "@/lib/warmup-worker";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  if (!secret || token !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const authFail = requireCronAuth(request);
+  if (authFail) return authFail;
 
   const domains = await prisma.domain.findMany({
     select: {
@@ -78,6 +76,7 @@ export async function GET(request: NextRequest) {
     activeWarmups: domains.filter((d) => d.warmupEnabled).length,
     completedWarmups: domains.filter((d) => d.warmupCompletedAt).length,
     serverTime: new Date(),
+    worker: getWarmupWorkerState(),
     domains: result,
   });
 }

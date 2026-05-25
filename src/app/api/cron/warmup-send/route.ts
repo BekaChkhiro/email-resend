@@ -7,25 +7,23 @@ import {
   getRandomConversationType,
   generateThreadId,
 } from "@/lib/warmup-content";
+import { requireCronAuth } from "@/lib/cron-auth";
+import { getCurrentWarmupDay, shouldResetDailyCounter } from "@/lib/warmup-day";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-function isSameDay(date1: Date, date2: Date): boolean {
-  return (
-    date1.getFullYear() === date2.getFullYear() &&
-    date1.getMonth() === date2.getMonth() &&
-    date1.getDate() === date2.getDate()
-  );
+export async function POST(request: Request) {
+  return handle(request);
 }
 
 export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+  return handle(request);
+}
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+async function handle(request: Request) {
+  const authFail = requireCronAuth(request);
+  if (authFail) return authFail;
 
   console.log("[WARMUP-SEND] Starting warmup send job...");
 
@@ -64,24 +62,20 @@ export async function GET(request: Request) {
       continue;
     }
 
-    // Reset daily counters if it's a new day
-    let currentWarmupDay = domain.warmupDay;
+    // Monotonic day calculation from warmupStartedAt (Tbilisi TZ).
+    let currentWarmupDay = getCurrentWarmupDay(domain.warmupStartedAt, now);
+    if (currentWarmupDay > WARMUP_DURATION_DAYS) currentWarmupDay = WARMUP_DURATION_DAYS;
     let sentToday = domain.warmupSentToday;
 
-    if (domain.warmupLastSentAt && !isSameDay(domain.warmupLastSentAt, now)) {
-      // New day - increment warmup day and reset counter
-      currentWarmupDay = Math.min(domain.warmupDay + 1, WARMUP_DURATION_DAYS);
+    if (currentWarmupDay > domain.warmupDay || shouldResetDailyCounter(domain.warmupLastSentAt, now)) {
       sentToday = 0;
-
       await prisma.domain.update({
         where: { id: domain.id },
-        data: {
-          warmupDay: currentWarmupDay,
-          warmupSentToday: 0,
-        },
+        data: { warmupDay: currentWarmupDay, warmupSentToday: 0 },
       });
-
-      console.log(`[WARMUP-SEND] Domain ${domain.domain}: advanced to day ${currentWarmupDay}`);
+      if (currentWarmupDay > domain.warmupDay) {
+        console.log(`[WARMUP-SEND] Domain ${domain.domain}: caught up to day ${currentWarmupDay}`);
+      }
     }
 
     // Check daily limit

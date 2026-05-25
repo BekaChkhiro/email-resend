@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { resend } from "@/lib/resend";
 import { generateWarmupEmail } from "@/lib/warmup-content";
+import { requireCronAuth } from "@/lib/cron-auth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -9,13 +10,17 @@ export const maxDuration = 60;
 const MAX_REPLY_DEPTH = 2; // Max 3 emails per thread (initial + 2 replies)
 const MIN_DELAY_MINUTES = 5; // Wait at least 5 minutes before replying
 
-export async function GET(request: Request) {
-  const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+export async function POST(request: Request) {
+  return handle(request);
+}
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export async function GET(request: Request) {
+  return handle(request);
+}
+
+async function handle(request: Request) {
+  const authFail = requireCronAuth(request);
+  if (authFail) return authFail;
 
   console.log("[WARMUP-REPLY] Starting warmup reply job...");
 
@@ -90,8 +95,8 @@ export async function GET(request: Request) {
       continue;
     }
 
-    if (!replyReceiver.isActive) {
-      console.log(`[WARMUP-REPLY] Reply receiver ${replyReceiver.domain} not active`);
+    if (!replyReceiver.isActive || !replyReceiver.warmupEnabled) {
+      console.log(`[WARMUP-REPLY] Reply receiver ${replyReceiver.domain} not active/enabled`);
       continue;
     }
 

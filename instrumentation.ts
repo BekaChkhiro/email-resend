@@ -21,4 +21,11 @@ export async function register() {
 
   const { startValidationWorker } = await import("./src/lib/validation-worker");
   startValidationWorker();
+
+  if (process.env.ENABLE_WARMUP_WORKER !== "false") {
+    const { startWarmupWorker } = await import("./src/lib/warmup-worker");
+    startWarmupWorker();
+  } else {
+    console.log("[warmup] disabled via ENABLE_WARMUP_WORKER=false");
+  }
 }
