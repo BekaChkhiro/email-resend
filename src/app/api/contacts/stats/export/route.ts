@@ -337,6 +337,73 @@ export async function GET() {
   }
   styleDataRows(timelineSheet, 2, timelineSheet.lastRow!.number, [2, 3]);
 
+  // ============ Sheet 8: Valid Contacts ============
+  const validContacts = await prisma.contact.findMany({
+    where: {
+      emailStatus: "valid",
+      isUnsubscribed: false,
+    },
+    select: {
+      email: true,
+      firstName: true,
+      lastName: true,
+      companyName: true,
+      companyDomain: true,
+      companyIndustry: true,
+      title: true,
+      country: true,
+      location: true,
+      linkedin: true,
+      decisionMaker: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const validSheet = workbook.addWorksheet(`Valid Emails (${validContacts.length})`, {
+    properties: { tabColor: { argb: "FF059669" } },
+    views: [{ state: "frozen", ySplit: 1 }],
+  });
+  validSheet.columns = [
+    { header: "Email", key: "email", width: 38 },
+    { header: "First Name", key: "firstName", width: 16 },
+    { header: "Last Name", key: "lastName", width: 16 },
+    { header: "Company", key: "company", width: 28 },
+    { header: "Title", key: "title", width: 28 },
+    { header: "Industry", key: "industry", width: 24 },
+    { header: "Country", key: "country", width: 16 },
+    { header: "Location", key: "location", width: 24 },
+    { header: "Domain", key: "domain", width: 24 },
+    { header: "LinkedIn", key: "linkedin", width: 36 },
+    { header: "Decision Maker", key: "decisionMaker", width: 14 },
+    { header: "Added", key: "added", width: 14 },
+  ];
+  styleHeader(validSheet.getRow(1));
+  for (const c of validContacts) {
+    validSheet.addRow([
+      c.email,
+      c.firstName,
+      c.lastName,
+      c.companyName ?? "",
+      c.title ?? "",
+      c.companyIndustry ?? "",
+      c.country ?? "",
+      c.location ?? "",
+      c.companyDomain ?? "",
+      c.linkedin ?? "",
+      c.decisionMaker === true ? "Yes" : c.decisionMaker === false ? "No" : "",
+      c.createdAt.toISOString().slice(0, 10),
+    ]);
+  }
+  if (validContacts.length > 0) {
+    styleDataRows(validSheet, 2, validSheet.lastRow!.number);
+    // Enable auto-filter on the headers so the user can sort/filter in Excel.
+    validSheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: validSheet.columns.length },
+    };
+  }
+
   const buffer = await workbook.xlsx.writeBuffer();
 
   return new Response(buffer as unknown as BodyInit, {
