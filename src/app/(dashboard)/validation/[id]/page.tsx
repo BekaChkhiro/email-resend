@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { isJobPaused } from "@/lib/validation-job-worker";
 import JobDetailClient from "./job-detail-client";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,7 @@ export default async function ValidationJobPage({
           processedEmails: job.processedEmails,
           validEmails: job.validEmails,
         }}
+        initialPaused={isJobPaused(job.id)}
         initialBreakdown={breakdown}
       />
     </div>

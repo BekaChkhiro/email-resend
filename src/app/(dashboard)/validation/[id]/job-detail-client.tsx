@@ -3,7 +3,11 @@
 import { useEffect, useState, useCallback, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, useToast } from "@/components/ui";
-import { triggerJobBatch } from "@/app/actions/validation-jobs";
+import {
+  triggerJobBatch,
+  pauseJobValidation,
+  resumeJobValidation,
+} from "@/app/actions/validation-jobs";
 
 const POLL_MS = 15000;
 const RATE_PER_HOUR = 150;
@@ -39,16 +43,19 @@ function formatEta(remaining: number): string {
 export default function JobDetailClient({
   jobId,
   initial,
+  initialPaused,
   initialBreakdown,
 }: {
   jobId: string;
   initial: JobState;
+  initialPaused: boolean;
   initialBreakdown: Breakdown;
 }) {
   const router = useRouter();
   const toast = useToast();
   const [job, setJob] = useState<JobState>(initial);
   const [breakdown, setBreakdown] = useState<Breakdown>(initialBreakdown);
+  const [paused, setPaused] = useState(initialPaused);
   const [isPending, startTransition] = useTransition();
   // True once the background worker has been kicked for this job (either the
   // user clicked Start, or processing is already underway from a prior visit).
@@ -68,6 +75,7 @@ export default function JobDetailClient({
         validEmails: data.job.validEmails,
       });
       setBreakdown(data.breakdown);
+      if (typeof data.paused === "boolean") setPaused(data.paused);
     } catch {
       /* ignore transient poll errors */
     }
@@ -91,6 +99,7 @@ export default function JobDetailClient({
 
   function handleStart() {
     setStarted(true);
+    setPaused(false);
     startTransition(async () => {
       try {
         const result = await triggerJobBatch(jobId, 5);
@@ -101,6 +110,35 @@ export default function JobDetailClient({
         await refresh();
       } catch {
         toast("Failed to start validation.", "error");
+      }
+    });
+  }
+
+  function handlePause() {
+    setPaused(true);
+    startTransition(async () => {
+      try {
+        await pauseJobValidation(jobId);
+        toast("Paused. The job will stop after the current batch.", "info");
+        await refresh();
+      } catch {
+        toast("Failed to pause.", "error");
+        setPaused(false);
+      }
+    });
+  }
+
+  function handleResume() {
+    setPaused(false);
+    setStarted(true);
+    startTransition(async () => {
+      try {
+        await resumeJobValidation(jobId);
+        toast("Resumed — continuing automatically.", "success");
+        await refresh();
+      } catch {
+        toast("Failed to resume.", "error");
+        setPaused(true);
       }
     });
   }
@@ -119,7 +157,7 @@ export default function JobDetailClient({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-medium text-gray-900 dark:text-zinc-100">
-              {done ? "Validation complete" : "Validating"}
+              {done ? "Validation complete" : paused ? "Paused" : "Validating"}
               <span className="ml-2 text-xs font-normal text-gray-400 dark:text-zinc-500">
                 {job.status}
               </span>
@@ -138,24 +176,43 @@ export default function JobDetailClient({
             </p>
           </div>
           {!done &&
-            (!started ? (
+            (paused ? (
+              <Button onClick={handleResume} isLoading={isPending} loadingText="Resuming...">
+                Resume
+              </Button>
+            ) : !started ? (
               <Button onClick={handleStart} isLoading={isPending} loadingText="Starting...">
                 Start validation
               </Button>
             ) : (
-              <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                </span>
-                Processing automatically
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                  </span>
+                  Processing automatically
+                </div>
+                <Button
+                  variant="secondary"
+                  onClick={handlePause}
+                  isLoading={isPending}
+                  loadingText="Pausing..."
+                >
+                  Pause
+                </Button>
               </div>
             ))}
         </div>
-        {started && !done && (
+        {!done && started && !paused && (
           <p className="mt-2 text-xs text-gray-400 dark:text-zinc-500">
             Running in the background — ~5 emails every 2 minutes. You can close
             this tab; it keeps going on the server.
+          </p>
+        )}
+        {!done && paused && (
+          <p className="mt-2 text-xs text-amber-600 dark:text-amber-400">
+            Paused — no new emails are being validated. Click Resume to continue.
           </p>
         )}
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-zinc-800">

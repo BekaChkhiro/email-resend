@@ -42,6 +42,26 @@ type WorkerState = {
 declare global {
   var __validationJobWorker: WorkerState | undefined;
   var __validationJobWorkerTimer: NodeJS.Timeout | undefined;
+  var __validationJobPaused: Set<string> | undefined;
+}
+
+// Job IDs the user has paused. Lives in the server process (shared by the
+// worker, server actions, and API routes — all same process on Railway).
+// Not persisted: a server restart clears pauses, which is acceptable for a
+// transient "stop" control.
+const pausedJobs: Set<string> = globalThis.__validationJobPaused ?? new Set();
+globalThis.__validationJobPaused = pausedJobs;
+
+export function pauseJob(jobId: string): void {
+  pausedJobs.add(jobId);
+}
+
+export function resumeJob(jobId: string): void {
+  pausedJobs.delete(jobId);
+}
+
+export function isJobPaused(jobId: string): boolean {
+  return pausedJobs.has(jobId);
 }
 
 const state: WorkerState =
@@ -151,8 +171,17 @@ export async function runJobBatch(
   failed: number;
   skipped: number;
 }> {
+  // Skip emails belonging to paused jobs so a paused job stops advancing
+  // while others keep going.
+  const excluded = Array.from(pausedJobs);
+  const where = jobId
+    ? { status: null, jobId }
+    : excluded.length > 0
+      ? { status: null, jobId: { notIn: excluded } }
+      : { status: null };
+
   const batch = await prisma.validationEmail.findMany({
-    where: jobId ? { status: null, jobId } : { status: null },
+    where,
     select: { id: true, jobId: true, email: true },
     orderBy: { createdAt: "asc" },
     take: batchSize,

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { isJobPaused } from "@/lib/validation-job-worker";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +49,7 @@ export async function GET(
     breakdown[key] = (breakdown[key] ?? 0) + g._count._all;
   }
 
-  return NextResponse.json({ job, breakdown });
+  return NextResponse.json({ job, breakdown, paused: isJobPaused(id) });
 }
 
 /** Delete a job and all its email rows (cascade). */
