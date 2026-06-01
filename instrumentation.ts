@@ -22,6 +22,16 @@ export async function register() {
   const { startValidationWorker } = await import("./src/lib/validation-worker");
   startValidationWorker();
 
+  // Standalone CSV-validation jobs (the /validation tool). Separate queue
+  // from the contacts validator above; shares the same external API, so a
+  // throttled request just fails the row and it retries on the next tick.
+  if (process.env.ENABLE_VALIDATION_JOB_WORKER !== "false") {
+    const { startValidationJobWorker } = await import("./src/lib/validation-job-worker");
+    startValidationJobWorker();
+  } else {
+    console.log("[validation-job-worker] disabled via ENABLE_VALIDATION_JOB_WORKER=false");
+  }
+
   if (process.env.ENABLE_WARMUP_WORKER !== "false") {
     const { startWarmupWorker } = await import("./src/lib/warmup-worker");
     startWarmupWorker();
