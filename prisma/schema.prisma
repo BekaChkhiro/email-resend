@@ -237,6 +237,47 @@ model InboxMessage {
   @@map("inbox_messages")
 }
 
+enum ValidationJobStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+model ValidationJob {
+  id              String              @id @default(uuid())
+  name            String
+  status          ValidationJobStatus @default(pending)
+  emailColumn     String              @map("email_column")
+  totalEmails     Int                 @default(0) @map("total_emails")
+  processedEmails Int                 @default(0) @map("processed_emails")
+  validEmails     Int                 @default(0) @map("valid_emails")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  completedAt     DateTime?           @map("completed_at")
+
+  emails ValidationEmail[]
+
+  @@map("validation_jobs")
+}
+
+model ValidationEmail {
+  id           String    @id @default(uuid())
+  jobId        String    @map("job_id")
+  email        String
+  status       String?
+  score        Int?
+  isDisposable Boolean?  @map("is_disposable")
+  rawRow       Json?     @map("raw_row")
+  validatedAt  DateTime? @map("validated_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  job ValidationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([jobId, status])
+  @@map("validation_emails")
+}
+
 enum WarmupEmailStatus {
   pending
   sent
