@@ -22,8 +22,8 @@ import { prisma } from "./db";
 import { validateEmail, parseValidationResult } from "./emailValidator";
 
 const BATCH_SIZE = 5;
-const INTERVAL_MS = 120_000; // 2 minutes between active batches
-const IDLE_INTERVAL_MS = 300_000; // 5 minutes when no work
+const INTERVAL_MS = 120_000; // 2 minutes between active batches (rate limit)
+const IDLE_INTERVAL_MS = 20_000; // poll every 20s when idle so new jobs start fast
 const STARTUP_DELAY_MS = 15_000;
 
 type WorkerState = {

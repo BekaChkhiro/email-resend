@@ -1,13 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { runJobBatch } from "@/lib/validation-job-worker";
+import { runJobBatch, startValidationJobWorker } from "@/lib/validation-job-worker";
 
 /**
- * Process one batch of pending emails for a specific job immediately, without
- * waiting for the next cron tick. Used by the "Validate Now" button so the
- * user sees movement on the job they're viewing. The cron continues in
- * parallel across all jobs.
+ * Start (or resume) validation for a job: make sure the long-lived background
+ * worker is running in this server process — so processing continues
+ * automatically every couple of minutes without the user clicking again — and
+ * run one batch immediately so the first results show up right away.
+ *
+ * startValidationJobWorker() is idempotent (a no-op if already running), so
+ * clicking the button repeatedly is safe.
  */
 export async function triggerJobBatch(
   jobId: string,
@@ -18,6 +21,7 @@ export async function triggerJobBatch(
   failed: number;
   skipped: number;
 }> {
+  startValidationJobWorker();
   const result = await runJobBatch(batchSize, jobId);
   revalidatePath(`/validation/${jobId}`);
   return result;

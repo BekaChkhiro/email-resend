@@ -50,6 +50,11 @@ export default function JobDetailClient({
   const [job, setJob] = useState<JobState>(initial);
   const [breakdown, setBreakdown] = useState<Breakdown>(initialBreakdown);
   const [isPending, startTransition] = useTransition();
+  // True once the background worker has been kicked for this job (either the
+  // user clicked Start, or processing is already underway from a prior visit).
+  const [started, setStarted] = useState(
+    initial.processedEmails > 0 || initial.status === "processing"
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -84,14 +89,18 @@ export default function JobDetailClient({
     return () => clearInterval(timer);
   }, [refresh, done]);
 
-  function handleValidateNow() {
+  function handleStart() {
+    setStarted(true);
     startTransition(async () => {
       try {
         const result = await triggerJobBatch(jobId, 5);
-        toast(`Validated ${result.succeeded} of ${result.processed} in this batch.`, "success");
+        toast(
+          `Started — validated ${result.succeeded} so far. It now continues automatically.`,
+          "success"
+        );
         await refresh();
       } catch {
-        toast("Failed to run validation batch.", "error");
+        toast("Failed to start validation.", "error");
       }
     });
   }
@@ -128,17 +137,27 @@ export default function JobDetailClient({
               )}
             </p>
           </div>
-          {!done && (
-            <Button
-              variant="secondary"
-              onClick={handleValidateNow}
-              isLoading={isPending}
-              loadingText="Running..."
-            >
-              Validate Now (5)
-            </Button>
-          )}
+          {!done &&
+            (!started ? (
+              <Button onClick={handleStart} isLoading={isPending} loadingText="Starting...">
+                Start validation
+              </Button>
+            ) : (
+              <div className="flex items-center gap-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                </span>
+                Processing automatically
+              </div>
+            ))}
         </div>
+        {started && !done && (
+          <p className="mt-2 text-xs text-gray-400 dark:text-zinc-500">
+            Running in the background — ~5 emails every 2 minutes. You can close
+            this tab; it keeps going on the server.
+          </p>
+        )}
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-zinc-800">
           <div
             className="h-full rounded-full bg-emerald-500 transition-all duration-500"
